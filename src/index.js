@@ -1,6 +1,6 @@
 import { DiscordClient, DiscordError, OutOfBudget, Permission, hasPermission, verifyInteraction } from "./discord.js";
 import { MEMBER_CSV_HEADER, memberRow, roleNameLookup } from "./csv.js";
-import { createJob, describeFailure, getJob, runJob } from "./purge.js";
+import { createJob, describeFailure, getJob, runJob } from "./jobs.js";
 import { describeDay, isDue, localNow, parseTime, slotStarted } from "./time.js";
 
 const InteractionType = { PING: 1, COMMAND: 2, COMPONENT: 3 };
@@ -77,16 +77,30 @@ function resolveTargetChannel(interaction, options) {
   };
 }
 
-function checkTarget(target) {
+const PURGE_BOT_PERMISSIONS = {
+  "View Channel": Permission.VIEW_CHANNEL,
+  "Read Message History": Permission.READ_MESSAGE_HISTORY,
+  "Manage Messages": Permission.MANAGE_MESSAGES,
+};
+const ANONYMISE_BOT_PERMISSIONS = {
+  ...PURGE_BOT_PERMISSIONS,
+  "Send Messages": Permission.SEND_MESSAGES,
+  "Embed Links": Permission.EMBED_LINKS,
+  "Attach Files": Permission.ATTACH_FILES,
+  "Create Public Threads": Permission.CREATE_PUBLIC_THREADS,
+  "Send Messages in Threads": Permission.SEND_MESSAGES_IN_THREADS,
+  "Manage Threads": Permission.MANAGE_THREADS,
+};
+
+function checkTarget(target, botPermissions = PURGE_BOT_PERMISSIONS) {
   if (target.type !== GUILD_TEXT) return "That only works in text channels.";
   if (!hasPermission(target.userPermissions, Permission.MANAGE_MESSAGES)) {
     return `You need Manage Messages in <#${target.id}>.`;
   }
   // The bot's own permissions are only known for the channel the command was run in;
-  // elsewhere, a missing permission is reported when the purge runs.
+  // elsewhere, a missing permission is reported when the job runs.
   if (target.appPermissions != null) {
-    const needed = { "View Channel": Permission.VIEW_CHANNEL, "Read Message History": Permission.READ_MESSAGE_HISTORY, "Manage Messages": Permission.MANAGE_MESSAGES };
-    const missing = Object.entries(needed).filter(([, p]) => !hasPermission(target.appPermissions, p)).map(([n]) => n);
+    const missing = Object.entries(botPermissions).filter(([, p]) => !hasPermission(target.appPermissions, p)).map(([n]) => n);
     if (missing.length) return `I'm missing these permissions in <#${target.id}>: ${missing.join(", ")}`;
   }
   return null;
@@ -102,6 +116,8 @@ async function handleInteraction(interaction, env, ctx) {
     switch (interaction.data.name) {
       case "purge":
         return purgeCommand(interaction);
+      case "anonymise":
+        return anonymiseCommand(interaction);
       case "schedule":
         return scheduleCommand(interaction, env);
       case "export-members":
@@ -110,13 +126,26 @@ async function handleInteraction(interaction, env, ctx) {
   }
   if (interaction.type === InteractionType.COMPONENT) {
     const [action, channelId, keepPinned] = interaction.data.custom_id.split(":");
-    if (action === "purge-cancel") return updateMessage("Cancelled.");
-    if (action === "purge-confirm") return confirmPurge(interaction, env, ctx, channelId, keepPinned === "1");
+    if (action === "job-cancel" || action === "purge-cancel") return updateMessage("Cancelled.");
+    if (action === "purge-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "purge", keepPinned: keepPinned === "1" });
+    if (action === "anonymise-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "anonymise" });
   }
   return message("Unknown command.");
 }
 
-// --- /purge ------------------------------------------------------------------------------------
+// --- /purge and /anonymise ---------------------------------------------------------------------
+
+function confirmButtons(confirmLabel, confirmId) {
+  return [
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 4, label: confirmLabel, custom_id: confirmId },
+        { type: 2, style: 2, label: "Cancel", custom_id: "job-cancel" },
+      ],
+    },
+  ];
+}
 
 function purgeCommand(interaction) {
   const options = interaction.data.options;
@@ -127,40 +156,57 @@ function purgeCommand(interaction) {
   const keepPinned = getOption(options, "keep_pinned") === true;
   const pinnedNote = keepPinned ? " (pinned messages will be kept)" : "";
   return message(`This will permanently delete **all** messages in <#${target.id}>${pinnedNote}. This cannot be undone.`, {
-    components: [
-      {
-        type: 1,
-        components: [
-          { type: 2, style: 4, label: "Delete everything", custom_id: `purge-confirm:${target.id}:${keepPinned ? 1 : 0}` },
-          { type: 2, style: 2, label: "Cancel", custom_id: "purge-cancel" },
-        ],
-      },
-    ],
+    components: confirmButtons("Delete everything", `purge-confirm:${target.id}:${keepPinned ? 1 : 0}`),
   });
 }
 
-async function confirmPurge(interaction, env, ctx, channelId, keepPinned) {
-  if (!(await createJob(env.DB, interaction.guild_id, channelId, keepPinned))) {
-    return updateMessage(`A purge is already running in <#${channelId}>.`);
+function anonymiseCommand(interaction) {
+  const target = resolveTargetChannel(interaction, interaction.data.options);
+  const problem = checkTarget(target, ANONYMISE_BOT_PERMISSIONS);
+  if (problem) return message(problem);
+
+  return message(
+    [
+      `This will repost every message in <#${target.id}> as me, oldest first, then delete the originals, so the channel keeps the same messages in the same order without showing who wrote them.`,
+      "",
+      "- Threads are anonymised too. Threads started from a message are rebuilt under the reposted message (so their links change); other threads, including private and archived ones, are anonymised where they are.",
+      "- Original timestamps, reactions and reply links are lost. Pins, attachments (up to 10 MB each), stickers and polls (as text notes) are kept.",
+      "- It runs at roughly 20–30 messages a minute. Ask people not to post in the channel until it finishes, or new messages will end up in the middle.",
+      "- It removes names, not identities: what people wrote may still identify them, and Discord's audit log can show admins whose older messages were deleted.",
+      "",
+      "This cannot be undone.",
+    ].join("\n"),
+    { components: confirmButtons("Anonymise channel", `anonymise-confirm:${target.id}`) },
+  );
+}
+
+function describeResult(mode, result, channelId) {
+  const verb = mode === "anonymise" ? "Reposted" : "Deleted";
+  if (result.status === "done") {
+    return mode === "anonymise"
+      ? `Finished anonymising <#${channelId}>: reposted ${result.count} messages. Any threads are being anonymised separately in the background and may take a few more minutes.`
+      : `Deleted ${result.count} messages in <#${channelId}>.`;
+  }
+  if (result.status === "failed") return `Stopped after ${result.count} messages: ${describeFailure(result.error)}`;
+  return `${verb} ${result.count} messages so far. The rest of <#${channelId}> will be done in the background over the next few minutes.`;
+}
+
+async function confirmJob(interaction, env, ctx, channelId, { mode, keepPinned = false }) {
+  if (!(await createJob(env.DB, interaction.guild_id, channelId, { mode, keepPinned }))) {
+    return updateMessage(`A purge or anonymise is already running in <#${channelId}>.`);
   }
   ctx.waitUntil(
     (async () => {
       const discord = backgroundClient(env);
       const job = await getJob(env.DB, channelId);
       const result = await runJob(env.DB, discord, job);
-      const content =
-        result.status === "done"
-          ? `Deleted ${result.deleted} messages in <#${channelId}>.`
-          : result.status === "failed"
-            ? `Purge of <#${channelId}> stopped after ${result.deleted} messages: ${describeFailure(result.error)}`
-            : `Deleted ${result.deleted} messages so far. The rest of <#${channelId}> will be cleared in the background over the next few minutes.`;
-      // A fresh client so the edit still goes through if the purge used the whole allowance.
+      // A fresh client so the edit still goes through if the job used the whole allowance.
       await new DiscordClient(env.DISCORD_TOKEN, { budget: 2 })
-        .editOriginal(interaction.application_id, interaction.token, { json: { content, components: [] } })
+        .editOriginal(interaction.application_id, interaction.token, { json: { content: describeResult(mode, result, channelId), components: [] } })
         .catch(() => {});
     })(),
   );
-  return updateMessage(`Deleting messages in <#${channelId}>...`);
+  return updateMessage(mode === "anonymise" ? `Anonymising <#${channelId}>...` : `Deleting messages in <#${channelId}>...`);
 }
 
 // --- /schedule ---------------------------------------------------------------------------------
@@ -277,7 +323,7 @@ async function runCron(env, scheduledTime) {
   for (const schedule of schedules) {
     if (!isDue(schedule, now)) continue;
     await db.prepare("UPDATE schedules SET last_run = ? WHERE id = ?").bind(now.date, schedule.id).run();
-    const queued = await createJob(db, schedule.guild_id, schedule.channel_id, schedule.keep_pinned === 1);
+    const queued = await createJob(db, schedule.guild_id, schedule.channel_id, { keepPinned: schedule.keep_pinned === 1 });
     console.log(JSON.stringify({ event: "schedule_triggered", schedule_id: schedule.id, channel_id: schedule.channel_id, queued }));
   }
 
@@ -285,7 +331,7 @@ async function runCron(env, scheduledTime) {
   for (const job of jobs) {
     if (discord.remaining() < 3 || discord.timeLeft() < 5_000) break;
     const result = await runJob(db, discord, job);
-    console.log(JSON.stringify({ event: "purge_progress", channel_id: job.channel_id, status: result.status, deleted: result.deleted }));
+    console.log(JSON.stringify({ event: "job_progress", mode: job.mode, channel_id: job.channel_id, status: result.status, count: result.count }));
   }
 }
 

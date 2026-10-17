@@ -1,0 +1,312 @@
+// Runs purge and anonymise jobs against an in-memory fake of the Discord API, with a real
+// SQLite database built from the migrations, and a small request budget per run so jobs
+// have to resume across many runs, the way the cron trigger drives them.
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, beforeEach, test } from "node:test";
+import { splitContent } from "../src/anonymise.js";
+import { DiscordClient } from "../src/discord.js";
+import { createJob, runJob } from "../src/jobs.js";
+import { compareIds, snowflakeAt } from "../src/messages.js";
+
+const GUILD = "9";
+const CHANNEL = "500";
+const BOT = { id: "1", username: "simplebot", bot: true };
+const ALICE = { id: "2", username: "alice" };
+const BOB = { id: "3", username: "bob" };
+
+// --- Fake D1 backed by node:sqlite -------------------------------------------------------------
+
+function fakeD1() {
+  const sqlite = new DatabaseSync(":memory:");
+  for (const file of readdirSync(new URL("../migrations/", import.meta.url)).sort()) {
+    sqlite.exec(readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8"));
+  }
+  const statement = (sql, args = []) => ({
+    bind: (...a) => statement(sql, a),
+    run: async () => ({ meta: { changes: Number(sqlite.prepare(sql).run(...args).changes) } }),
+    first: async () => sqlite.prepare(sql).get(...args) ?? null,
+    all: async () => ({ results: sqlite.prepare(sql).all(...args) }),
+  });
+  return {
+    prepare: (sql) => statement(sql),
+    batch: async (statements) => {
+      const out = [];
+      for (const s of statements) out.push(await s.run());
+      return out;
+    },
+  };
+}
+
+// --- Fake Discord ------------------------------------------------------------------------------
+
+let channels; // id -> { messages, thread?: { parent_id, name, archived, locked, private } }
+let nextSeq;
+let realFetch;
+
+function newId(atMs = Date.now()) {
+  return String(BigInt(snowflakeAt(atMs)) + nextSeq++);
+}
+
+function addMessage(channelId, fields, atMs) {
+  const m = { type: 0, content: "", attachments: [], embeds: [], flags: 0, pinned: false, channel_id: channelId, ...fields, id: newId(atMs) };
+  channels[channelId].messages.push(m);
+  return m;
+}
+
+function addThread(parentId, { name, archived = false, locked = false, isPrivate = false, starter = null }, atMs) {
+  const id = starter ? starter.id : newId(atMs);
+  channels[id] = { messages: [], thread: { parent_id: parentId, name, archived, locked, private: isPrivate } };
+  if (starter) starter.thread = threadObject(id);
+  return id;
+}
+
+function threadObject(id) {
+  const t = channels[id].thread;
+  return { id, parent_id: t.parent_id, name: t.name, type: t.private ? 12 : 11, thread_metadata: { archived: t.archived, locked: t.locked, auto_archive_duration: 1440, archive_timestamp: "2026-01-01T00:00:00Z" } };
+}
+
+const byId = (a, b) => compareIds(a.id, b.id);
+const sortedMessages = (id) => [...channels[id].messages].sort(byId);
+
+function json(status, body) {
+  return new Response(body === null ? null : JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+async function fakeDiscord(url, init = {}) {
+  const u = new URL(url);
+  if (u.hostname === "cdn.discordapp.com") return new Response(new Blob([`file:${u.pathname}`]));
+  const path = u.pathname.replace("/api/v10", "");
+  const method = init.method ?? "GET";
+  let m;
+
+  if (method === "GET" && path === `/guilds/${GUILD}/threads/active`) {
+    const active = Object.keys(channels).filter((id) => channels[id].thread && !channels[id].thread.archived);
+    return json(200, { threads: active.map(threadObject) });
+  }
+  if (method === "GET" && (m = path.match(/^\/channels\/(\d+)\/threads\/archived\/(public|private)$/))) {
+    const archived = Object.keys(channels).filter((id) => {
+      const t = channels[id].thread;
+      return t && t.parent_id === m[1] && t.archived && t.private === (m[2] === "private");
+    });
+    return json(200, { threads: archived.map(threadObject), has_more: false });
+  }
+  if ((m = path.match(/^\/channels\/(\d+)$/))) {
+    const thread = channels[m[1]]?.thread;
+    if (!thread) return json(404, { code: 10003, message: "Unknown Channel" });
+    if (method === "PATCH") {
+      Object.assign(thread, JSON.parse(init.body));
+      return json(200, threadObject(m[1]));
+    }
+    if (method === "DELETE") {
+      delete channels[m[1]];
+      return json(200, {});
+    }
+  }
+  if (method === "PUT" && (m = path.match(/^\/channels\/(\d+)\/thread-members\/@me$/))) {
+    if (channels[m[1]].thread.archived) return json(400, { code: 50083, message: "Thread is archived" });
+    return json(204, null);
+  }
+  if (method === "POST" && (m = path.match(/^\/channels\/(\d+)\/messages\/(\d+)\/threads$/))) {
+    const starter = channels[m[1]].messages.find((x) => x.id === m[2]);
+    const body = JSON.parse(init.body);
+    const id = addThread(m[1], { name: body.name, starter });
+    return json(201, threadObject(id));
+  }
+
+  if (!(m = path.match(/^\/channels\/(\d+)\/messages(?:\/(.+))?$/))) throw new Error(`Unexpected ${method} ${path}`);
+  const [, channelId, rest] = m;
+  const channel = channels[channelId];
+  if (!channel) return json(404, { code: 10003, message: "Unknown Channel" });
+
+  if (method === "GET" && !rest) {
+    const limit = Number(u.searchParams.get("limit"));
+    const after = u.searchParams.get("after");
+    const before = u.searchParams.get("before");
+    const all = sortedMessages(channelId);
+    const page = after ? all.filter((x) => compareIds(x.id, after) > 0).slice(0, limit) : all.filter((x) => !before || compareIds(x.id, before) < 0).slice(-limit);
+    return json(200, page.reverse()); // Discord returns newest first
+  }
+  if (method === "POST" && !rest) {
+    if (channel.thread?.archived || channel.thread?.locked) return json(400, { code: 50083, message: "Thread is archived" });
+    let payload;
+    let files = [];
+    if (init.body instanceof FormData) {
+      payload = JSON.parse(init.body.get("payload_json"));
+      files = payload.attachments.map((a) => ({ filename: a.filename, url: `https://cdn.discordapp.com/new/${a.filename}`, size: 10 }));
+    } else {
+      payload = JSON.parse(init.body);
+    }
+    assert.deepEqual(payload.allowed_mentions, { parse: [] }, "reposts must not ping anyone");
+    assert.ok(payload.content.length <= 2000);
+    return json(200, addMessage(channelId, { author: BOT, content: payload.content, attachments: files, embeds: payload.embeds ?? [] }));
+  }
+  if (method === "PUT" && (m = rest?.match(/^pins\/(\d+)$/))) {
+    channel.messages.find((x) => x.id === m[1]).pinned = true;
+    return json(204, null);
+  }
+  if (method === "POST" && rest === "bulk-delete") {
+    const ids = JSON.parse(init.body).messages;
+    if (ids.some((id) => !channel.messages.some((x) => x.id === id))) return json(404, { code: 10008, message: "Unknown Message" });
+    channel.messages = channel.messages.filter((x) => !ids.includes(x.id));
+    return json(204, null);
+  }
+  if (method === "DELETE" && rest) {
+    const target = channel.messages.find((x) => x.id === rest);
+    if (!target) return json(404, { code: 10008, message: "Unknown Message" });
+    if (target.type === 21) return json(400, { code: 50021, message: "Cannot execute action on a system message" });
+    channel.messages = channel.messages.filter((x) => x.id !== rest);
+    return json(204, null);
+  }
+  throw new Error(`Unexpected ${method} ${path}`);
+}
+
+// --- Driver ------------------------------------------------------------------------------------
+
+/** Runs every queued job like the cron would, with a small budget per job per run. */
+async function runAllJobs(db, budget) {
+  for (let round = 1; round <= 500; round++) {
+    const { results: jobs } = await db.prepare("SELECT * FROM purge_jobs ORDER BY id").all();
+    if (!jobs.length) return round;
+    for (const job of jobs) {
+      const result = await runJob(db, new DiscordClient("token", { budget }), job);
+      if (result.status === "failed") return { failed: result };
+    }
+  }
+  throw new Error("jobs never finished");
+}
+
+beforeEach(() => {
+  channels = { [CHANNEL]: { messages: [] } };
+  nextSeq = 0n;
+  realFetch = globalThis.fetch;
+  globalThis.fetch = fakeDiscord;
+});
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+const contents = (id) => sortedMessages(id).map((m) => m.content);
+const allFromBot = (id) => sortedMessages(id).every((m) => m.author.bot);
+
+// --- Tests -------------------------------------------------------------------------------------
+
+test("anonymise reposts the channel in order as the bot and removes the originals", async () => {
+  const day = 24 * 60 * 60 * 1000;
+  const old = Date.now() - 30 * day; // too old to bulk delete
+  addMessage(CHANNEL, { author: ALICE, content: "old message from alice" }, old);
+  addMessage(CHANNEL, { author: BOB, content: "old message from bob", pinned: true }, old + 1000);
+  addMessage(CHANNEL, { author: BOB, type: 7 }); // "bob joined" system message
+  addMessage(CHANNEL, { author: ALICE, content: "look", attachments: [{ filename: "cat.png", url: "https://cdn.discordapp.com/a/cat.png", size: 1000 }] });
+  addMessage(CHANNEL, { author: BOT, content: "an earlier bot message" });
+  addMessage(CHANNEL, { author: ALICE, content: "x".repeat(2500) }); // Nitro-length message
+  addMessage(CHANNEL, { author: BOB, type: 19, content: "a reply <@2>" });
+  for (let i = 0; i < 25; i++) addMessage(CHANNEL, { author: i % 2 ? ALICE : BOB, content: `message ${i}` });
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  const rounds = await runAllJobs(db, 20);
+  assert.ok(rounds > 2, "should have needed several runs");
+
+  assert.deepEqual(contents(CHANNEL), [
+    "old message from alice",
+    "old message from bob",
+    "look",
+    "an earlier bot message",
+    ...splitContent("x".repeat(2500)),
+    "a reply <@2>",
+    ...Array.from({ length: 25 }, (_, i) => `message ${i}`),
+  ]);
+  assert.ok(allFromBot(CHANNEL));
+  const after = sortedMessages(CHANNEL);
+  assert.equal(after.find((m) => m.content === "look").attachments[0].filename, "cat.png");
+  assert.equal(after.find((m) => m.content === "old message from bob").pinned, true);
+});
+
+test("threads started from messages are rebuilt under the repost and the old thread is deleted", async () => {
+  addMessage(CHANNEL, { author: ALICE, content: "before" });
+  const starter = addMessage(CHANNEL, { author: BOB, content: "let's discuss" });
+  const oldThread = addThread(CHANNEL, { name: "Discussion", starter, archived: true });
+  addMessage(oldThread, { author: BOB, type: 21 }); // the thread's link back to its starter
+  for (let i = 0; i < 15; i++) addMessage(oldThread, { author: i % 2 ? ALICE : BOB, content: `reply ${i}` });
+  addMessage(CHANNEL, { author: ALICE, content: "after" });
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  const rounds = await runAllJobs(db, 15);
+  assert.equal(typeof rounds, "number", JSON.stringify(rounds));
+
+  assert.deepEqual(contents(CHANNEL), ["before", "let's discuss", "after"]);
+  assert.ok(allFromBot(CHANNEL));
+  assert.equal(channels[oldThread], undefined, "old thread deleted");
+
+  const repost = sortedMessages(CHANNEL)[1];
+  const newThread = channels[repost.id];
+  assert.ok(newThread?.thread, "repost has a thread");
+  assert.equal(newThread.thread.name, "Discussion");
+  assert.equal(newThread.thread.archived, true, "archive state copied");
+  assert.deepEqual(contents(repost.id), Array.from({ length: 15 }, (_, i) => `reply ${i}`));
+  assert.ok(allFromBot(repost.id));
+});
+
+test("standalone threads, including private archived locked ones, are anonymised in place", async () => {
+  const publicThread = addThread(CHANNEL, { name: "Public" });
+  addMessage(CHANNEL, { author: ALICE, type: 18, content: "Public", message_reference: { channel_id: publicThread } });
+  addMessage(CHANNEL, { author: BOB, content: "hello" });
+  const privateThread = addThread(CHANNEL, { name: "Private", isPrivate: true, archived: true, locked: true });
+  for (let i = 0; i < 12; i++) addMessage(publicThread, { author: ALICE, content: `pub ${i}` });
+  for (let i = 0; i < 12; i++) addMessage(privateThread, { author: BOB, content: `priv ${i}` });
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  const rounds = await runAllJobs(db, 15);
+  assert.equal(typeof rounds, "number", JSON.stringify(rounds));
+
+  assert.deepEqual(contents(CHANNEL), [`🧵 Thread: <#${publicThread}>`, "hello"], "thread notice replaced by a link");
+  assert.deepEqual(contents(publicThread), Array.from({ length: 12 }, (_, i) => `pub ${i}`));
+  assert.deepEqual(contents(privateThread), Array.from({ length: 12 }, (_, i) => `priv ${i}`));
+  assert.ok(allFromBot(CHANNEL) && allFromBot(publicThread) && allFromBot(privateThread));
+  assert.equal(channels[privateThread].thread.archived, true, "re-archived");
+  assert.equal(channels[privateThread].thread.locked, true, "re-locked");
+});
+
+test("anonymise leaves messages posted after it started alone", async () => {
+  addMessage(CHANNEL, { author: ALICE, content: "before" });
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  const late = addMessage(CHANNEL, { author: BOB, content: "during" }, Date.now() + 5000);
+
+  await runAllJobs(db, 45);
+  assert.ok(channels[CHANNEL].messages.some((m) => m.id === late.id), "late message untouched");
+  assert.deepEqual(contents(CHANNEL), ["before", "during"]);
+});
+
+test("anonymise stops without changing anything if message text can't be read", async () => {
+  addMessage(CHANNEL, { author: ALICE }); // what messages look like without Message Content Intent
+  addMessage(CHANNEL, { author: BOB });
+  const before = structuredClone(channels);
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  const outcome = await runAllJobs(db, 45);
+  assert.match(outcome.failed.error.message, /Message Content Intent/);
+  assert.deepEqual(channels, before);
+});
+
+test("purge deletes everything except pinned messages when asked", async () => {
+  const old = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  for (let i = 0; i < 5; i++) addMessage(CHANNEL, { author: ALICE, content: `old ${i}` }, old + i);
+  for (let i = 0; i < 150; i++) addMessage(CHANNEL, { author: BOB, content: `new ${i}`, pinned: i === 3 });
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { keepPinned: true });
+  await runAllJobs(db, 4);
+  assert.deepEqual(contents(CHANNEL), ["new 3"]);
+});
+
+test("splitContent breaks long text at natural points", () => {
+  const text = `${"a".repeat(1500)}\n${"b".repeat(1000)}`;
+  assert.deepEqual(splitContent(text), ["a".repeat(1500), "b".repeat(1000)]);
+  assert.deepEqual(splitContent("c".repeat(4000)).map((c) => c.length), [2000, 2000]);
+});

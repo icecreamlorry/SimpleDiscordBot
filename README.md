@@ -3,6 +3,7 @@
 A small Discord bot, hosted for free on Cloudflare Workers, that:
 
 - **`/purge [channel] [keep_pinned]`** deletes every message in a channel (asks for confirmation first). Needs Manage Messages.
+- **`/anonymise [channel]`** reposts every message in a channel as the bot, oldest first, then deletes the originals, so the channel keeps the same messages in the same order without showing who wrote them (asks for confirmation first). Needs Manage Messages.
 - **`/schedule add | list | remove`** clears a channel automatically every day or on a chosen weekday at a set time (UK time). Needs Manage Messages.
 - **`/export-members`** sends you a CSV of the server's members (username, the display name shown in that server, and their roles), visible only to you. Needs Manage Server.
 
@@ -10,18 +11,27 @@ All replies are ephemeral (only the person who ran the command sees them).
 
 ## How it works
 
-There's no always-on process. Discord sends each slash command to the Worker over HTTPS (an "interactions endpoint"), and a Cloudflare cron trigger runs every minute to start scheduled purges and continue large ones. Schedules and in-progress purges are kept in a Cloudflare D1 database.
+There's no always-on process. Discord sends each slash command to the Worker over HTTPS (an "interactions endpoint"), and a Cloudflare cron trigger runs every minute to start scheduled purges and continue large purges and anonymise jobs. Schedules and in-progress jobs are kept in a Cloudflare D1 database.
 
 Because of this the bot always shows as **offline** in the member list. That's normal; the commands still work.
 
 Workers Free allows about 50 Discord API calls per run, so big purges are done in chunks: up to roughly 800 recent messages a minute. Messages older than 14 days can't be bulk-deleted (a Discord limit) and go one at a time, about 40 a minute.
+
+Anonymising runs at roughly 20–30 messages a minute, since each message has to be reposted (Discord also rate-limits bots posting in one channel). Message content is only held in memory while a message is reposted; the database stores just a cursor and the IDs of originals waiting to be deleted.
+
+What `/anonymise` keeps and loses:
+- Kept: text (long Nitro messages are split in two), attachments up to 10 MB each, pins, bots' rich embeds, stickers and polls as text notes, forwarded messages' content.
+- Threads: a thread started from a message is rebuilt under the reposted message (same name, messages copied in order, archive/lock state kept), then the old thread is deleted, so links to it change. Every other thread in the channel, including private and archived ones, is anonymised in place and then re-archived/re-locked as it was. "X started a thread" notices become a bot message linking to the thread. Each thread runs as its own background job.
+- Lost: original timestamps, reactions, reply links. Other system messages ("X joined", boosts) are deleted, not reposted.
+- Reposts are sent as silent messages and never ping anyone.
+- Only messages that existed when it started are touched. Anything posted while it runs stays put, so ask people not to post until it finishes.
 
 ## Setup
 
 You need Node.js 20+ and a Cloudflare account.
 
 1. **Discord app.** At <https://discord.com/developers/applications>:
-   - **Bot**: copy the token, and turn on **Server Members Intent** (needed for `/export-members`).
+   - **Bot**: copy the token, and turn on **Server Members Intent** (needed for `/export-members`) and **Message Content Intent** (needed for `/anonymise`; without it the bot stops before changing anything).
    - **General Information**: copy the **Public Key** into `DISCORD_PUBLIC_KEY` in [wrangler.jsonc](wrangler.jsonc). Set the Terms of Service and Privacy Policy URLs (see below).
 2. **Install and log in to Cloudflare:**
    ```bash
@@ -44,14 +54,32 @@ You need Node.js 20+ and a Cloudflare account.
    npm run register
    ```
    Re-run this whenever you change [src/commands.js](src/commands.js).
-7. **Invite the bot** with scopes `bot` and `applications.commands` and the permissions View Channels, Read Message History and Manage Messages.
+7. **Invite the bot** with scopes `bot` and `applications.commands` and the permissions in the table below. If the bot is already in your server, you can add them to its role instead of re-inviting it.
+
+### Permissions
+
+| Permission | Used by |
+| --- | --- |
+| View Channels | everything |
+| Read Message History | `/purge`, `/anonymise` |
+| Manage Messages | `/purge`, `/anonymise` (deleting messages) |
+| Send Messages | `/anonymise` (reposting) |
+| Embed Links | `/anonymise` (copying bots' embeds) |
+| Attach Files | `/anonymise` (re-uploading attachments) |
+| Create Public Threads | `/anonymise` (rebuilding threads under reposts) |
+| Send Messages in Threads | `/anonymise` (reposting inside threads) |
+| Manage Threads | `/anonymise` (seeing private threads, unarchiving/unlocking and re-locking threads, deleting rebuilt threads' originals) |
+
+Permissions integer for an invite link: `326417640448`.
+
+Privileged intents (Bot page): **Server Members Intent** for `/export-members`, **Message Content Intent** for `/anonymise`.
 
 Logs: Cloudflare dashboard → Workers & Pages → simple-discord-bot → Logs, or `npx wrangler tail`.
 
 ## Development
 
 ```bash
-npm test        # unit tests for the scheduling logic
+npm test        # unit tests, including purge/anonymise against a simulated channel
 npm run dev     # local Worker; trigger the cron with http://localhost:8787/__scheduled
 ```
 

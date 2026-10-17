@@ -10,11 +10,11 @@
 <main>
   <nav><a href="index.html">SimpleDiscordBot</a><a href="terms.html">Terms of Service</a></nav>
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: 17 October 2026</p>
+  <p class="updated">Last updated: 18 October 2026</p>
 
   <p>This policy explains what information SimpleDiscordBot ("the bot", "we") handles, why, and what rights you have. It is written to meet the UK General Data Protection Regulation (UK GDPR) and the Data Protection Act 2018.</p>
 
-  <p><strong>In short:</strong> the bot does not keep any information about individual users. To produce a member-list export it reads usernames, display names and roles from Discord and hands them straight to the server manager who asked for them, without saving a copy. The only things it stores are the schedule settings a server sets up (which channel to clear, and when) and, while a channel is being cleared, how far it has got.</p>
+  <p><strong>In short:</strong> the bot does not keep any information about individual users. To produce a member-list export it reads usernames, display names and roles from Discord and hands them straight to the server manager who asked for them, without saving a copy. When a channel is anonymised, it reads each message only for the moment it takes to repost it, and never saves message content. The only things it stores are the schedule settings a server sets up (which channel to clear, and when) and, while a channel is being cleared or anonymised, how far it has got.</p>
 
   <h2>Who is responsible</h2>
   <p>The bot is operated by Laurie Brown, based in the United Kingdom, who is the data controller for the processing described here. You can get in touch at <span class="contact-email">[email address hidden from spam bots; please enable JavaScript to see it]</span>.</p>
@@ -30,7 +30,12 @@
     <tr>
       <td>Messages in a channel being cleared</td>
       <td>When <code>/purge</code> is run, or a scheduled purge runs, the bot asks Discord for the list of messages in that channel so it can delete them.</td>
-      <td>No. The bot does not request access to message content and only uses each message's ID, date and whether it is pinned, in order to delete it. It keeps no record of deleted messages.</td>
+      <td>No. For a purge the bot only uses each message's ID, date and whether it is pinned, in order to delete it. It keeps no record of deleted messages.</td>
+    </tr>
+    <tr>
+      <td>Message content (text, attachments, stickers, polls) in a channel being anonymised, including its threads</td>
+      <td>Only when someone with the Manage Messages permission runs <code>/anonymise</code>. The bot reads each message, posts a copy of it under the bot's own name, then deletes the original, so the channel keeps the same messages without showing who wrote them. Threads in the channel, including private threads, are handled the same way.</td>
+      <td>No. Each message is held in memory only while it is being reposted. The copies are ordinary messages in the server, held by Discord like any other. While the job runs, the bot keeps the IDs of originals waiting to be deleted (not their content), until they are deleted.</td>
     </tr>
     <tr>
       <td>Server ID, channel ID and schedule settings (time, day, whether to keep pinned messages)</td>
@@ -38,9 +43,9 @@
       <td>Yes, until the schedule is removed. It is also deleted automatically within an hour of the bot being removed from the server, or once the bot finds the channel has been deleted. This is not information about any individual.</td>
     </tr>
     <tr>
-      <td>Server ID, channel ID and progress of a purge in progress</td>
-      <td>Large channels are cleared in chunks over several minutes, so the bot records how far it has got.</td>
-      <td>Only until that purge finishes, then deleted.</td>
+      <td>Server ID, channel ID and progress of a purge or anonymise in progress</td>
+      <td>Large channels are done in chunks over several minutes, so the bot records how far it has got.</td>
+      <td>Only until the job finishes, then deleted.</td>
     </tr>
     <tr>
       <td>Basic technical logs</td>
@@ -51,7 +56,10 @@
   <p>The bot does not track activity, build profiles, use cookies, or sell or share data with anyone.</p>
 
   <h2>Our lawful basis</h2>
-  <p>We rely on <strong>legitimate interests</strong> (Article 6(1)(f) UK GDPR): server managers have a legitimate interest in moderating their own servers and knowing who their members are. The processing is limited to what is needed, the usernames, display names and roles are already visible to every member of the server, and nothing is retained, so we consider the impact on members to be minimal.</p>
+  <p>We rely on <strong>legitimate interests</strong> (Article 6(1)(f) UK GDPR): server managers have a legitimate interest in moderating their own servers and knowing who their members are, and, when anonymising a channel, in removing members' names from past discussions. The processing is limited to what is needed, the usernames, display names and roles are already visible to every member of the server, and nothing is retained, so we consider the impact on members to be minimal.</p>
+
+  <h2>Anonymised channels</h2>
+  <p>Anonymising removes each author's name from their messages, but it cannot guarantee that nobody can work out who wrote what. The text itself may identify the author, other members may already have seen or saved the messages, and Discord's audit log can show server admins whose older messages the bot deleted. Discord may also keep deleted messages for a time under its own policies.</p>
 
   <h2>Member-list exports</h2>
   <p>Once a CSV file has been sent to a server manager, that copy is theirs. The server manager who downloads it is responsible for how they use, store and share it, and for doing so lawfully. We have no access to downloaded files.</p>

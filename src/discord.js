@@ -2,7 +2,13 @@ const API = "https://discord.com/api/v10";
 
 export const Permission = {
   VIEW_CHANNEL: 1n << 10n,
+  SEND_MESSAGES: 1n << 11n,
   MANAGE_MESSAGES: 1n << 13n,
+  EMBED_LINKS: 1n << 14n,
+  ATTACH_FILES: 1n << 15n,
+  MANAGE_THREADS: 1n << 34n,
+  CREATE_PUBLIC_THREADS: 1n << 35n,
+  SEND_MESSAGES_IN_THREADS: 1n << 38n,
   READ_MESSAGE_HISTORY: 1n << 16n,
   MANAGE_GUILD: 1n << 5n,
 };
@@ -69,6 +75,15 @@ export class DiscordClient {
       return res.status === 204 ? null : res.json();
     }
     throw new OutOfBudget(); // Still rate limited; try again next run.
+  }
+
+  /** Downloads a file from Discord's CDN (e.g. a message attachment). Counts towards the budget. */
+  async download(url) {
+    if (this.used >= this.budget || this.timeLeft() <= 0) throw new OutOfBudget();
+    this.used++;
+    const res = await fetch(url);
+    if (!res.ok) throw new DiscordError(res.status, { message: `Could not download attachment (${res.status})` });
+    return res.blob();
   }
 
   /** Edit the original response to an interaction (works for 15 minutes after it was created). */

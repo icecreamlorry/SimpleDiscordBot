@@ -23,6 +23,15 @@ export const COMMANDS = [
     ],
   },
   {
+    name: "anonymise",
+    description: "Repost every message in a channel as the bot, then delete the originals",
+    default_member_permissions: MANAGE_MESSAGES,
+    ...guildOnly,
+    options: [
+      { type: Option.CHANNEL, name: "channel", description: "Channel to anonymise (defaults to this one)", channel_types: [GUILD_TEXT] },
+    ],
+  },
+  {
     name: "schedule",
     description: "Manage scheduled channel purges",
     default_member_permissions: MANAGE_MESSAGES,
