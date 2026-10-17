@@ -4,7 +4,7 @@ A small Discord bot, hosted for free on Cloudflare Workers, that:
 
 - **`/purge [channel] [keep_pinned]`** deletes every message in a channel (asks for confirmation first). Needs Manage Messages.
 - **`/schedule add | list | remove`** clears a channel automatically every day or on a chosen weekday at a set time (UK time). Needs Manage Messages.
-- **`/export-members`** sends you a CSV of the server's member usernames, visible only to you. Needs Manage Server.
+- **`/export-members`** sends you a CSV of the server's members (username and the display name shown in that server), visible only to you. Needs Manage Server.
 
 All replies are ephemeral (only the person who ran the command sees them).
 

@@ -1,4 +1,5 @@
 import { DiscordClient, DiscordError, OutOfBudget, Permission, hasPermission, verifyInteraction } from "./discord.js";
+import { MEMBER_CSV_HEADER, memberRow } from "./csv.js";
 import { createJob, describeFailure, getJob, runJob } from "./purge.js";
 import { describeDay, isDue, localNow, parseTime, slotStarted } from "./time.js";
 
@@ -210,10 +211,6 @@ async function scheduleCommand(interaction, env) {
 
 // --- /export-members ---------------------------------------------------------------------------
 
-function csvField(value) {
-  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
-
 function exportMembersCommand(interaction, env, ctx) {
   ctx.waitUntil(exportMembers(interaction, env));
   return { type: Reply.DEFERRED_MESSAGE, data: { flags: EPHEMERAL } };
@@ -224,13 +221,13 @@ async function exportMembers(interaction, env) {
   const edit = (payload) => discord.editOriginal(interaction.application_id, interaction.token, payload);
 
   // Built in memory and sent straight to the requester; nothing is stored.
-  const rows = ["username"];
+  const rows = [MEMBER_CSV_HEADER];
   let after = "0";
   let complete = false;
   try {
     while (discord.remaining() > 1) {
       const page = await discord.request("GET", `/guilds/${interaction.guild_id}/members?limit=1000&after=${after}`);
-      for (const member of page) rows.push(csvField(member.user.username));
+      for (const member of page) rows.push(memberRow(member));
       if (page.length < 1000) {
         complete = true;
         break;

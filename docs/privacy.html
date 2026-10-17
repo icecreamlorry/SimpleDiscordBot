@@ -14,7 +14,7 @@
 
   <p>This policy explains what information SimpleDiscordBot ("the bot", "we") handles, why, and what rights you have. It is written to meet the UK General Data Protection Regulation (UK GDPR) and the Data Protection Act 2018.</p>
 
-  <p><strong>In short:</strong> the bot does not keep any information about individual users. To produce a member-list export it reads usernames from Discord and hands them straight to the server manager who asked for them, without saving a copy. The only things it stores are the schedule settings a server sets up (which channel to clear, and when) and, while a channel is being cleared, how far it has got.</p>
+  <p><strong>In short:</strong> the bot does not keep any information about individual users. To produce a member-list export it reads usernames and display names from Discord and hands them straight to the server manager who asked for them, without saving a copy. The only things it stores are the schedule settings a server sets up (which channel to clear, and when) and, while a channel is being cleared, how far it has got.</p>
 
   <h2>Who is responsible</h2>
   <p>The bot is operated by Laurie Brown, based in the United Kingdom, who is the data controller for the processing described here. You can get in touch at <span class="contact-email">[email address hidden from spam bots; please enable JavaScript to see it]</span>.</p>
@@ -23,8 +23,8 @@
   <table>
     <tr><th>Information</th><th>When and why</th><th>Is it stored?</th></tr>
     <tr>
-      <td>Discord usernames of server members</td>
-      <td>Only when someone with the Manage Server permission runs <code>/export-members</code>. The bot fetches the member list from Discord and builds a CSV file of usernames for that person.</td>
+      <td>Discord usernames and server display names of server members</td>
+      <td>Only when someone with the Manage Server permission runs <code>/export-members</code>. The bot fetches the member list from Discord and builds a CSV file of each member's username and the display name they use in that server (their server nickname if they have one) for that person.</td>
       <td>No. The file is built in memory, sent privately to the person who asked for it, then discarded. The bot keeps no copy.</td>
     </tr>
     <tr>
@@ -45,13 +45,13 @@
     <tr>
       <td>Basic technical logs</td>
       <td>The bot logs errors and which channels were cleared (by channel and server ID) so problems can be fixed.</td>
-      <td>Kept for a few days by our hosting provider, then deleted automatically. Logs do not include usernames or message content.</td>
+      <td>Kept for a few days by our hosting provider, then deleted automatically. Logs do not include usernames, display names or message content.</td>
     </tr>
   </table>
   <p>The bot does not track activity, build profiles, use cookies, or sell or share data with anyone.</p>
 
   <h2>Our lawful basis</h2>
-  <p>We rely on <strong>legitimate interests</strong> (Article 6(1)(f) UK GDPR): server managers have a legitimate interest in moderating their own servers and knowing who their members are. The processing is limited to what is needed, the usernames are already visible to every member of the server, and nothing is retained, so we consider the impact on members to be minimal.</p>
+  <p>We rely on <strong>legitimate interests</strong> (Article 6(1)(f) UK GDPR): server managers have a legitimate interest in moderating their own servers and knowing who their members are. The processing is limited to what is needed, the usernames and display names are already visible to every member of the server, and nothing is retained, so we consider the impact on members to be minimal.</p>
 
   <h2>Member-list exports</h2>
   <p>Once a CSV file has been sent to a server manager, that copy is theirs. The server manager who downloads it is responsible for how they use, store and share it, and for doing so lawfully. We have no access to downloaded files.</p>
