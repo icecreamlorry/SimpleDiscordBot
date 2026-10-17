@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <nav><a href="index.html">SimpleDiscordBot</a><a href="terms.html">Terms of Service</a></nav>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: 17 October 2026</p>
+
+  <p>This policy explains what information SimpleDiscordBot ("the bot", "we") handles, why, and what rights you have. It is written to meet the UK General Data Protection Regulation (UK GDPR) and the Data Protection Act 2018.</p>
+
+  <p><strong>In short:</strong> the bot does not keep any information about individual users. To produce a member-list export it reads usernames from Discord and hands them straight to the server manager who asked for them, without saving a copy. The only thing it stores is the schedule settings a server sets up (which channel to clear, and when).</p>
+
+  <h2>Who is responsible</h2>
+  <p>The bot is operated by Laurie Brown, based in the United Kingdom, who is the data controller for the processing described here. You can get in touch at <span class="contact-email">[email address hidden from spam bots; please enable JavaScript to see it]</span>.</p>
+
+  <h2>What the bot handles</h2>
+  <table>
+    <tr><th>Information</th><th>When and why</th><th>Is it stored?</th></tr>
+    <tr>
+      <td>Discord usernames of server members</td>
+      <td>Only when someone with the Manage Server permission runs <code>/export-members</code>. The bot fetches the member list from Discord and builds a CSV file of usernames for that person.</td>
+      <td>No. The file is built in memory, sent privately to the person who asked for it, then discarded. The bot keeps no copy.</td>
+    </tr>
+    <tr>
+      <td>Messages in a channel being cleared</td>
+      <td>When <code>/purge</code> is run, or a scheduled purge runs, the bot asks Discord for the list of messages in that channel so it can delete them.</td>
+      <td>No. The bot does not request access to message content, does not read it, and does not keep any record of deleted messages.</td>
+    </tr>
+    <tr>
+      <td>Server ID, channel ID and schedule settings (time, day, whether to keep pinned messages)</td>
+      <td>When a server manager sets up a scheduled purge with <code>/schedule add</code>, so the bot knows what to clear and when.</td>
+      <td>Yes, until the schedule is removed, the channel is deleted, or the bot is removed from the server, at which point it is deleted automatically. This is not information about any individual.</td>
+    </tr>
+    <tr>
+      <td>Basic technical logs</td>
+      <td>The bot logs errors and which channels were cleared (by channel and server name) so problems can be fixed.</td>
+      <td>Kept only as long as needed for troubleshooting. Logs do not include usernames or message content.</td>
+    </tr>
+  </table>
+  <p>The bot does not track activity, build profiles, use cookies, or sell or share data with anyone.</p>
+
+  <h2>Our lawful basis</h2>
+  <p>We rely on <strong>legitimate interests</strong> (Article 6(1)(f) UK GDPR): server managers have a legitimate interest in moderating their own servers and knowing who their members are. The processing is limited to what is needed, the usernames are already visible to every member of the server, and nothing is retained, so we consider the impact on members to be minimal.</p>
+
+  <h2>Member-list exports</h2>
+  <p>Once a CSV file has been sent to a server manager, that copy is theirs. The server manager who downloads it is responsible for how they use, store and share it, and for doing so lawfully. We have no access to downloaded files.</p>
+
+  <h2>Who else is involved</h2>
+  <ul>
+    <li><strong>Discord</strong>, which provides the platform and holds all of your account and message data. Discord's handling of your data is covered by <a href="https://discord.com/privacy">Discord's Privacy Policy</a>.</li>
+    <li><strong>Our hosting provider</strong>, which runs the server the bot operates on and stores the schedule settings and logs described above.</li>
+  </ul>
+
+  <h2>Your rights</h2>
+  <p>Under UK GDPR you have the right to access, correct or erase personal data held about you, to restrict or object to its processing, and to data portability. Because the bot does not store information about individual users, there will normally be nothing for us to provide or delete, but you are welcome to contact us at <span class="contact-email">[email address hidden from spam bots; please enable JavaScript to see it]</span> and we will respond within one month.</p>
+  <p>If you would rather not be included in a server's member list, the simplest option is to speak to that server's managers, or leave the server.</p>
+  <p>If you are unhappy with how we have handled your data, you can complain to the Information Commissioner's Office at <a href="https://ico.org.uk/make-a-complaint/">ico.org.uk</a>.</p>
+
+  <h2>Children</h2>
+  <p>Discord requires users to be at least 13 years old (or older where local law requires). The bot is intended for use within those limits.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>If we change what the bot does with data, we will update this page and the date at the top.</p>
+</main>
+<script src="contact.js"></script>
+</body>
+</html>
