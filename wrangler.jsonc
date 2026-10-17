@@ -10,7 +10,7 @@
   "vars": {
     "BOT_TIMEZONE": "Europe/London",
     // Developer Portal -> General Information -> Public Key. Not a secret.
-    "DISCORD_PUBLIC_KEY": ""
+    "DISCORD_PUBLIC_KEY": "3572079cccb56836cc548cfdad2d96ed7186293a1a72f39da23fc8223e782a43"
   },
   // DISCORD_TOKEN is a secret: set it with `npx wrangler secret put DISCORD_TOKEN`.
   "d1_databases": [
