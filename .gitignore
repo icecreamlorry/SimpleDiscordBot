@@ -221,3 +221,8 @@ __marimo__/
 
 # Bot runtime data
 data/
+
+# Cloudflare Worker
+node_modules/
+.wrangler/
+.dev.vars

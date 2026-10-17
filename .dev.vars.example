@@ -1,0 +1,2 @@
+# Used by `npm run register` and `npm run dev`. Never commit the real file.
+DISCORD_TOKEN=

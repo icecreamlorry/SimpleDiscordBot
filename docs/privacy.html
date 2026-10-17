@@ -14,7 +14,7 @@
 
   <p>This policy explains what information SimpleDiscordBot ("the bot", "we") handles, why, and what rights you have. It is written to meet the UK General Data Protection Regulation (UK GDPR) and the Data Protection Act 2018.</p>
 
-  <p><strong>In short:</strong> the bot does not keep any information about individual users. To produce a member-list export it reads usernames from Discord and hands them straight to the server manager who asked for them, without saving a copy. The only thing it stores is the schedule settings a server sets up (which channel to clear, and when).</p>
+  <p><strong>In short:</strong> the bot does not keep any information about individual users. To produce a member-list export it reads usernames from Discord and hands them straight to the server manager who asked for them, without saving a copy. The only things it stores are the schedule settings a server sets up (which channel to clear, and when) and, while a channel is being cleared, how far it has got.</p>
 
   <h2>Who is responsible</h2>
   <p>The bot is operated by Laurie Brown, based in the United Kingdom, who is the data controller for the processing described here. You can get in touch at <span class="contact-email">[email address hidden from spam bots; please enable JavaScript to see it]</span>.</p>
@@ -30,17 +30,22 @@
     <tr>
       <td>Messages in a channel being cleared</td>
       <td>When <code>/purge</code> is run, or a scheduled purge runs, the bot asks Discord for the list of messages in that channel so it can delete them.</td>
-      <td>No. The bot does not request access to message content, does not read it, and does not keep any record of deleted messages.</td>
+      <td>No. The bot does not request access to message content and only uses each message's ID, date and whether it is pinned, in order to delete it. It keeps no record of deleted messages.</td>
     </tr>
     <tr>
       <td>Server ID, channel ID and schedule settings (time, day, whether to keep pinned messages)</td>
       <td>When a server manager sets up a scheduled purge with <code>/schedule add</code>, so the bot knows what to clear and when.</td>
-      <td>Yes, until the schedule is removed, the channel is deleted, or the bot is removed from the server, at which point it is deleted automatically. This is not information about any individual.</td>
+      <td>Yes, until the schedule is removed. It is also deleted automatically within an hour of the bot being removed from the server, or once the bot finds the channel has been deleted. This is not information about any individual.</td>
+    </tr>
+    <tr>
+      <td>Server ID, channel ID and progress of a purge in progress</td>
+      <td>Large channels are cleared in chunks over several minutes, so the bot records how far it has got.</td>
+      <td>Only until that purge finishes, then deleted.</td>
     </tr>
     <tr>
       <td>Basic technical logs</td>
-      <td>The bot logs errors and which channels were cleared (by channel and server name) so problems can be fixed.</td>
-      <td>Kept only as long as needed for troubleshooting. Logs do not include usernames or message content.</td>
+      <td>The bot logs errors and which channels were cleared (by channel and server ID) so problems can be fixed.</td>
+      <td>Kept for a few days by our hosting provider, then deleted automatically. Logs do not include usernames or message content.</td>
     </tr>
   </table>
   <p>The bot does not track activity, build profiles, use cookies, or sell or share data with anyone.</p>
@@ -54,7 +59,7 @@
   <h2>Who else is involved</h2>
   <ul>
     <li><strong>Discord</strong>, which provides the platform and holds all of your account and message data. Discord's handling of your data is covered by <a href="https://discord.com/privacy">Discord's Privacy Policy</a>.</li>
-    <li><strong>Our hosting provider</strong>, which runs the server the bot operates on and stores the schedule settings and logs described above.</li>
+    <li><strong>Cloudflare</strong>, which hosts the bot (Cloudflare Workers) and stores the schedule settings and logs described above, in a database located in Western Europe. Requests to the bot, including member lists while an export is being built, pass through Cloudflare's network, which may process them outside the UK. Cloudflare acts as our processor under its <a href="https://www.cloudflare.com/cloudflare-customer-dpa/">Data Processing Addendum</a>, which includes safeguards for international transfers; see also <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's Privacy Policy</a>.</li>
   </ul>
 
   <h2>Your rights</h2>

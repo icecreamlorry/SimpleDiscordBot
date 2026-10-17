@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "simple-discord-bot",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-17",
+  "triggers": {
+    // Every minute: runs due schedules and continues large purges.
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "BOT_TIMEZONE": "Europe/London",
+    // Developer Portal -> General Information -> Public Key. Not a secret.
+    "DISCORD_PUBLIC_KEY": ""
+  },
+  // DISCORD_TOKEN is a secret: set it with `npx wrangler secret put DISCORD_TOKEN`.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "simple-discord-bot",
+      "database_id": "7d397ac4-7806-4df3-b75f-21df7a9d8709",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "traces": { "enabled": true }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "simple-discord-bot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply simple-discord-bot --remote",
+    "register": "node --env-file=.dev.vars scripts/register-commands.js",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "wrangler": "^4.151.1"
+  }
+}
