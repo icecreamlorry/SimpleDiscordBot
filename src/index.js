@@ -1,5 +1,5 @@
 import { DiscordClient, DiscordError, OutOfBudget, Permission, hasPermission, verifyInteraction } from "./discord.js";
-import { MEMBER_CSV_HEADER, memberRow } from "./csv.js";
+import { MEMBER_CSV_HEADER, memberRow, roleNameLookup } from "./csv.js";
 import { createJob, describeFailure, getJob, runJob } from "./purge.js";
 import { describeDay, isDue, localNow, parseTime, slotStarted } from "./time.js";
 
@@ -225,9 +225,11 @@ async function exportMembers(interaction, env) {
   let after = "0";
   let complete = false;
   try {
+    const roles = await discord.request("GET", `/guilds/${interaction.guild_id}/roles`);
+    const roleNames = roleNameLookup(roles, interaction.guild_id);
     while (discord.remaining() > 1) {
       const page = await discord.request("GET", `/guilds/${interaction.guild_id}/members?limit=1000&after=${after}`);
-      for (const member of page) rows.push(memberRow(member));
+      for (const member of page) rows.push(memberRow(member, roleNames));
       if (page.length < 1000) {
         complete = true;
         break;
