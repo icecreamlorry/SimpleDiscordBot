@@ -1,8 +1,9 @@
 import { DiscordClient, DiscordError, OutOfBudget, Permission, hasPermission, verifyInteraction } from "./discord.js";
 import { MEMBER_CSV_HEADER, memberRow, roleNameLookup } from "./csv.js";
 import { createJob, describeFailure, getJob, runJob } from "./jobs.js";
-import { cleanUpDrafts, sayCommand, sendSay } from "./say.js";
-import { describeDay, isDue, localNow, parseTime, slotStarted } from "./time.js";
+import { runCron } from "./cron.js";
+import { sayCommand, sendSay } from "./say.js";
+import { describeDay, localNow, parseTime, slotStarted } from "./time.js";
 
 const InteractionType = { PING: 1, COMMAND: 2, COMPONENT: 3, MODAL_SUBMIT: 5 };
 const Reply = { PONG: 1, MESSAGE: 4, DEFERRED_MESSAGE: 5, UPDATE_MESSAGE: 7, MODAL: 9 };
@@ -12,8 +13,6 @@ const MISSING_ACCESS = 50001;
 
 // Background work after replying to Discord gets ~30 s; stop a little before that.
 const BACKGROUND_TIME_MS = 25_000;
-// Cron runs every minute; finish before the next one starts.
-const CRON_TIME_MS = 50_000;
 
 export default {
   async fetch(request, env, ctx) {
@@ -243,28 +242,32 @@ async function scheduleCommand(interaction, env) {
     const at = parseTime(String(getOption(sub.options, "at")));
     if (!at) return message("Time must be in 24-hour HH:MM format, e.g. `03:00`.");
     const target = resolveTargetChannel(interaction, sub.options);
-    const problem = checkTarget(target);
+    const action = getOption(sub.options, "action") ?? "purge";
+    const problem = checkTarget(target, action === "anonymise" ? ANONYMISE_BOT_PERMISSIONS : PURGE_BOT_PERMISSIONS);
     if (problem) return message(problem);
 
     const day = getOption(sub.options, "day");
-    const keepPinned = getOption(sub.options, "keep_pinned") === true;
+    // Anonymising keeps pins anyway, so keep_pinned only applies to purges.
+    const keepPinned = action === "purge" && getOption(sub.options, "keep_pinned") === true;
     const now = localNow(tz);
     const schedule = { time: at, day };
     // If today's slot has already passed, don't fire it straight away.
     const lastRun = slotStarted(schedule, now) ? now.date : null;
     const row = await env.DB.prepare(
-      "INSERT INTO schedules (guild_id, channel_id, time, day, keep_pinned, last_run) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+      "INSERT INTO schedules (guild_id, channel_id, time, day, keep_pinned, last_run, action) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
     )
-      .bind(guildId, target.id, at, day, keepPinned ? 1 : 0, lastRun)
+      .bind(guildId, target.id, at, day, keepPinned ? 1 : 0, lastRun, action)
       .first();
-    return message(`Schedule #${row.id}: <#${target.id}> will be cleared ${describeDay(day)} at ${at} (${tz}).`);
+    const verb = action === "anonymise" ? "anonymised" : "cleared";
+    return message(`Schedule #${row.id}: <#${target.id}> will be ${verb} ${describeDay(day)} at ${at} (${tz}).`);
   }
 
   if (sub.name === "list") {
     const { results } = await env.DB.prepare("SELECT * FROM schedules WHERE guild_id = ? ORDER BY id").bind(guildId).all();
-    if (!results.length) return message("No scheduled purges.");
+    if (!results.length) return message("No schedules.");
     const lines = results.map(
-      (s) => `#${s.id}: <#${s.channel_id}> ${describeDay(s.day)} at ${s.time}${s.keep_pinned ? " (keeps pinned)" : ""}`,
+      (s) =>
+        `#${s.id}: ${s.action === "anonymise" ? "anonymise" : "clear"} <#${s.channel_id}> ${describeDay(s.day)} at ${s.time}${s.keep_pinned ? " (keeps pinned)" : ""}`,
     );
     return message(`Times are ${tz}.\n${lines.join("\n")}`);
   }
@@ -325,56 +328,4 @@ async function exportMembers(interaction, env) {
   // BOM so Excel opens it as UTF-8.
   form.append("files[0]", new Blob(["﻿" + rows.join("\r\n") + "\r\n"], { type: "text/csv" }), filename);
   await edit({ form }).catch((e) => console.error(JSON.stringify({ event: "export_send_failed", message: e.message })));
-}
-
-// --- Cron: scheduled purges and continuing large purges ----------------------------------------
-
-async function runCron(env, scheduledTime) {
-  const db = env.DB;
-  const discord = new DiscordClient(env.DISCORD_TOKEN, { deadline: Date.now() + CRON_TIME_MS });
-  const now = localNow(env.BOT_TIMEZONE, new Date(scheduledTime));
-
-  await cleanUpDrafts(db);
-  const { results: schedules } = await db.prepare("SELECT * FROM schedules").all();
-
-  // Hourly: forget servers the bot has been removed from.
-  if (schedules.length && new Date(scheduledTime).getUTCMinutes() === 0) {
-    await forgetRemovedGuilds(db, discord).catch((e) =>
-      console.error(JSON.stringify({ event: "guild_sweep_failed", message: e.message })),
-    );
-  }
-
-  for (const schedule of schedules) {
-    if (!isDue(schedule, now)) continue;
-    await db.prepare("UPDATE schedules SET last_run = ? WHERE id = ?").bind(now.date, schedule.id).run();
-    const queued = await createJob(db, schedule.guild_id, schedule.channel_id, { keepPinned: schedule.keep_pinned === 1 });
-    console.log(JSON.stringify({ event: "schedule_triggered", schedule_id: schedule.id, channel_id: schedule.channel_id, queued }));
-  }
-
-  const { results: jobs } = await db.prepare("SELECT * FROM purge_jobs ORDER BY id").all();
-  for (const job of jobs) {
-    if (discord.remaining() < 3 || discord.timeLeft() < 5_000) break;
-    const result = await runJob(db, discord, job);
-    console.log(JSON.stringify({ event: "job_progress", mode: job.mode, channel_id: job.channel_id, status: result.status, count: result.count }));
-  }
-}
-
-async function forgetRemovedGuilds(db, discord) {
-  const guildIds = new Set();
-  let after = "0";
-  for (;;) {
-    const page = await discord.request("GET", `/users/@me/guilds?limit=200&after=${after}`);
-    for (const g of page) guildIds.add(g.id);
-    if (page.length < 200) break;
-    after = page[page.length - 1].id;
-  }
-  const { results } = await db.prepare("SELECT DISTINCT guild_id FROM schedules UNION SELECT DISTINCT guild_id FROM purge_jobs").all();
-  for (const { guild_id } of results) {
-    if (guildIds.has(guild_id)) continue;
-    await db.batch([
-      db.prepare("DELETE FROM schedules WHERE guild_id = ?").bind(guild_id),
-      db.prepare("DELETE FROM purge_jobs WHERE guild_id = ?").bind(guild_id),
-    ]);
-    console.log(JSON.stringify({ event: "guild_forgotten", guild_id }));
-  }
 }

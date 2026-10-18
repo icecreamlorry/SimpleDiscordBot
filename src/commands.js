@@ -46,16 +46,16 @@ export const COMMANDS = [
   },
   {
     name: "schedule",
-    description: "Manage scheduled channel purges",
+    description: "Clear or anonymise channels automatically on a schedule",
     default_member_permissions: ADMINISTRATOR,
     ...guildOnly,
     options: [
       {
         type: Option.SUB_COMMAND,
         name: "add",
-        description: "Clear a channel automatically at a set time",
+        description: "Clear or anonymise a channel automatically at a set time",
         options: [
-          { type: Option.CHANNEL, name: "channel", description: "Channel to clear", required: true, channel_types: [GUILD_TEXT] },
+          { type: Option.CHANNEL, name: "channel", description: "Channel to clear or anonymise", required: true, channel_types: [GUILD_TEXT] },
           { type: Option.STRING, name: "at", description: "Time in 24h HH:MM (UK time)", required: true },
           {
             type: Option.STRING,
@@ -64,14 +64,23 @@ export const COMMANDS = [
             required: true,
             choices: [{ name: "Every day", value: "daily" }, ...DAY_NAMES.map((name, i) => ({ name, value: String(i) }))],
           },
-          keepPinned,
+          {
+            type: Option.STRING,
+            name: "action",
+            description: "What to do (defaults to deleting all messages)",
+            choices: [
+              { name: "Delete all messages", value: "purge" },
+              { name: "Anonymise (repost as the bot)", value: "anonymise" },
+            ],
+          },
+          { ...keepPinned, description: "Leave pinned messages in place (deleting only)" },
         ],
       },
-      { type: Option.SUB_COMMAND, name: "list", description: "Show scheduled purges in this server" },
+      { type: Option.SUB_COMMAND, name: "list", description: "Show this server's schedules" },
       {
         type: Option.SUB_COMMAND,
         name: "remove",
-        description: "Remove a scheduled purge",
+        description: "Remove a schedule",
         options: [{ type: Option.INTEGER, name: "schedule_id", description: "The number shown by /schedule list", required: true }],
       },
     ],

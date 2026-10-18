@@ -6,6 +6,8 @@ import { afterEach, beforeEach, test } from "node:test";
 import { splitContent } from "../src/anonymise.js";
 import { DiscordClient } from "../src/discord.js";
 import { createJob, runJob } from "../src/jobs.js";
+import { runCron } from "../src/cron.js";
+import { localNow } from "../src/time.js";
 import { compareIds, snowflakeAt } from "../src/messages.js";
 import { fakeD1, json } from "./helpers.js";
 
@@ -55,6 +57,7 @@ async function fakeDiscord(url, init = {}) {
   const method = init.method ?? "GET";
   let m;
 
+  if (method === "GET" && path === "/users/@me/guilds") return json(200, [{ id: GUILD }]);
   if (method === "GET" && path === `/guilds/${GUILD}/threads/active`) {
     const active = Object.keys(channels).filter((id) => channels[id].thread && !channels[id].thread.archived);
     return json(200, { threads: active.map(threadObject) });
@@ -308,4 +311,28 @@ test("splitContent breaks long text at natural points", () => {
   const text = `${"a".repeat(1500)}\n${"b".repeat(1000)}`;
   assert.deepEqual(splitContent(text), ["a".repeat(1500), "b".repeat(1000)]);
   assert.deepEqual(splitContent("c".repeat(4000)).map((c) => c.length), [2000, 2000]);
+});
+
+test("the cron starts scheduled anonymise and purge jobs", async () => {
+  const OTHER = "501";
+  channels[OTHER] = { messages: [] };
+  addMessage(CHANNEL, { author: ALICE, content: "keep me, anonymously" });
+  addMessage(OTHER, { author: BOB, content: "delete me" });
+
+  const db = fakeD1();
+  const now = localNow("Europe/London");
+  const time = `${String(Math.floor(now.minutes / 60)).padStart(2, "0")}:${String(now.minutes % 60).padStart(2, "0")}`;
+  const add = (channel, action) =>
+    db.prepare("INSERT INTO schedules (guild_id, channel_id, time, day, keep_pinned, action) VALUES (?, ?, ?, 'daily', 0, ?)").bind(GUILD, channel, time, action).run();
+  await add(CHANNEL, "anonymise");
+  await add(OTHER, "purge");
+
+  await runCron({ DB: db, DISCORD_TOKEN: BOT_TOKEN, BOT_TIMEZONE: "Europe/London" }, Date.now());
+  await runAllJobs(db, 45);
+
+  assert.deepEqual(contents(CHANNEL), ["keep me, anonymously"]);
+  assert.ok(allFromBot(CHANNEL));
+  assert.deepEqual(contents(OTHER), []);
+  const { results } = await db.prepare("SELECT last_run FROM schedules").all();
+  assert.ok(results.every((r) => r.last_run === now.date), "each schedule runs once today");
 });
