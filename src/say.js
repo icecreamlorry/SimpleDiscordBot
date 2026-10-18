@@ -34,7 +34,7 @@ function checkSayTarget(target, withAttachment) {
  * Handles /say: checks permissions, saves the draft and returns the pop-up to show.
  * Returns { problem } instead if the message can't be sent there.
  */
-export async function sayCommand(interaction, env, target, attachmentId) {
+export async function sayCommand(interaction, env, target, attachmentId, { silent = false } = {}) {
   const attachment = attachmentId ? interaction.data.resolved?.attachments?.[attachmentId] : null;
   const problem = checkSayTarget(target, Boolean(attachment));
   if (problem) return { problem };
@@ -42,9 +42,9 @@ export async function sayCommand(interaction, env, target, attachmentId) {
 
   const draftId = crypto.randomUUID();
   await env.DB.prepare(
-    "INSERT INTO say_drafts (id, channel_id, attachment_url, attachment_filename, attachment_size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    "INSERT INTO say_drafts (id, channel_id, attachment_url, attachment_filename, attachment_size, silent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
   )
-    .bind(draftId, target.id, attachment?.url ?? null, attachment?.filename ?? null, attachment?.size ?? null, Date.now())
+    .bind(draftId, target.id, attachment?.url ?? null, attachment?.filename ?? null, attachment?.size ?? null, silent ? 1 : 0, Date.now())
     .run();
 
   return {
@@ -100,8 +100,9 @@ export async function sendSay(interaction, env, draftId) {
   try {
     let first;
     for (const [i, chunk] of chunks.entries()) {
-      // No pings, and sent silently, so /say can't be used to mass-mention people.
-      const payload = { content: chunk, flags: SUPPRESS_NOTIFICATIONS, allowed_mentions: { parse: [] } };
+      // Mentions never ping, so /say can't be used to mass-mention people. The message itself
+      // notifies as normal unless the sender chose silent.
+      const payload = { content: chunk, flags: found.silent ? SUPPRESS_NOTIFICATIONS : 0, allowed_mentions: { parse: [] } };
       let sent;
       if (i === 0 && draft) {
         payload.attachments = [{ id: 0, filename: draft.attachment_filename }];

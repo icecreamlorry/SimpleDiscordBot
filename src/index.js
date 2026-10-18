@@ -158,7 +158,9 @@ async function handleInteraction(interaction, env, ctx) {
 
 async function say(interaction, env) {
   const options = interaction.data.options;
-  const result = await sayCommand(interaction, env, resolveTargetChannel(interaction, options), getOption(options, "attachment"));
+  const result = await sayCommand(interaction, env, resolveTargetChannel(interaction, options), getOption(options, "attachment"), {
+    silent: getOption(options, "silent") === true,
+  });
   return result.problem ? message(result.problem) : { type: Reply.MODAL, data: result.modal };
 }
 

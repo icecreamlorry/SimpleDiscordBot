@@ -58,6 +58,7 @@ test("/say opens a pop-up, then posts the text as the bot without pings", async 
   assert.equal(posted[0].channel, "700");
   assert.equal(posted[0].payload.content, "Line one\nLine two <@123> @everyone");
   assert.deepEqual(posted[0].payload.allowed_mentions, { parse: [] });
+  assert.equal(posted[0].payload.flags, 0, "notifies people by default");
   assert.match(edits[0], /^Sent: https:\/\/discord\.com\/channels\/9\/700\/1001$/);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM say_drafts").first()).n, 0, "draft removed");
 });
@@ -101,4 +102,12 @@ test("unknown or expired drafts send nothing", async () => {
   await db.prepare("INSERT INTO say_drafts (id, channel_id, created_at) VALUES ('old', '700', ?)").bind(Date.now() - 20 * 60 * 1000).run();
   await cleanUpDrafts(db);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM say_drafts").first()).n, 0);
+});
+
+test("/say can send silently when asked", async () => {
+  const db = fakeD1();
+  const { modal } = await sayCommand({ data: {} }, env(db), target(), undefined, { silent: true });
+  const draftId = modal.custom_id.split(":")[1];
+  await sendSay(submit(draftId, "quiet one"), env(db), draftId);
+  assert.equal(posted[0].payload.flags, 1 << 12, "sent as an @silent message");
 });

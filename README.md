@@ -4,7 +4,7 @@ A small Discord bot, hosted for free on Cloudflare Workers, that:
 
 - **`/purge [channel] [keep_pinned]`** deletes every message in a channel (asks for confirmation first).
 - **`/anonymise [channel]`** reposts every message in a channel as the bot, oldest first, then deletes the originals, so the channel keeps the same messages in the same order without showing who wrote them (asks for confirmation first).
-- **`/say [channel] [attachment]`** opens a pop-up where you write a message (multi-line, up to 4,000 characters), which the bot then posts as itself, so it's anonymous from the start. Mentions in it never ping anyone. You can only post where you could post yourself.
+- **`/say [channel] [attachment]`** opens a pop-up where you write a message (multi-line, up to 4,000 characters), which the bot then posts as itself, so it's anonymous from the start. It notifies people like a normal message unless you set `silent`, which sends it as an @silent message. Mentions in it never ping anyone. You can only post where you could post yourself.
 - **`/schedule add | list | remove`** clears or anonymises a channel automatically every day or on a chosen weekday at a set time (UK time). Pick the `action` when adding (deleting is the default). After the first anonymise run, the bot's earlier messages stay in place, so each later run only reposts what's been posted since.
 - **`/export-members`** sends you a CSV of the server's members (username, the display name shown in that server, and their roles), visible only to you.
 

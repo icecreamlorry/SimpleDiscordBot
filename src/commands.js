@@ -42,6 +42,7 @@ export const COMMANDS = [
     options: [
       { type: Option.CHANNEL, name: "channel", description: "Where to post (defaults to this channel)", channel_types: SAY_CHANNEL_TYPES },
       { type: Option.ATTACHMENT, name: "attachment", description: "A file to include (up to 10 MB)" },
+      { type: Option.BOOLEAN, name: "silent", description: "Send without notifying anyone (an @silent message)" },
     ],
   },
   {
