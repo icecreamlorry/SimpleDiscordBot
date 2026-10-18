@@ -401,3 +401,30 @@ test("protect and unprotect add and remove the bot's shield", async () => {
   await setProtected(discord, CHANNEL, m.id, false);
   assert.equal(isProtected(m), false);
 });
+
+test("purge-and-anonymise deletes all but protected (and pinned) messages, then anonymises them", async () => {
+  addMessage(CHANNEL, { author: ALICE, content: "delete 1" });
+  addMessage(CHANNEL, { author: BOB, content: "protected", reactions: botShield });
+  addMessage(CHANNEL, { author: ALICE, content: "delete: member shield", reactions: memberShield });
+  addMessage(CHANNEL, { author: BOB, content: "pinned", pinned: true });
+  for (let i = 0; i < 20; i++) addMessage(CHANNEL, { author: ALICE, content: `delete ${i + 2}` });
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "purge-anonymise", keepPinned: true });
+  // Watch the job's final result to check both counts.
+  let last;
+  for (let round = 0; round < 100; round++) {
+    const { results: jobs } = await db.prepare("SELECT * FROM purge_jobs ORDER BY id").all();
+    if (!jobs.length) break;
+    for (const job of jobs) last = await runJob(db, new DiscordClient(BOT_TOKEN, { budget: 12 }), job);
+  }
+  assert.equal(last.status, "done");
+  assert.equal(last.purged, 22);
+  assert.equal(last.count, 2);
+
+  const after = sortedMessages(CHANNEL);
+  assert.deepEqual(after.map((m) => m.content), ["protected", "pinned"]);
+  assert.ok(allFromBot(CHANNEL));
+  assert.equal(isProtected(after[0]), true, "still protected");
+  assert.equal(after[1].pinned, true, "still pinned");
+});

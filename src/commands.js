@@ -28,6 +28,16 @@ export const COMMANDS = [
     ],
   },
   {
+    name: "purge-and-anonymise",
+    description: "Delete everything except protected messages, then anonymise those",
+    default_member_permissions: ADMINISTRATOR,
+    ...guildOnly,
+    options: [
+      { type: Option.CHANNEL, name: "channel", description: "Channel to use (defaults to this one)", channel_types: JOB_CHANNEL_TYPES },
+      { ...keepPinned, description: "Also keep pinned messages (they get anonymised too)" },
+    ],
+  },
+  {
     name: "anonymise",
     description: "Repost every message in a channel as the bot, then delete the originals",
     default_member_permissions: ADMINISTRATOR,
@@ -74,6 +84,7 @@ export const COMMANDS = [
             choices: [
               { name: "Delete all messages", value: "purge" },
               { name: "Anonymise (repost as the bot)", value: "anonymise" },
+              { name: "Purge except protected, then anonymise", value: "purge-anonymise" },
             ],
           },
           { ...keepPinned, description: "Leave pinned messages in place (deleting only)" },

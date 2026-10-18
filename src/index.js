@@ -130,6 +130,8 @@ async function handleInteraction(interaction, env, ctx) {
     switch (interaction.data.name) {
       case "purge":
         return purgeCommand(interaction);
+      case "purge-and-anonymise":
+        return purgeAndAnonymiseCommand(interaction);
       case "anonymise":
         return anonymiseCommand(interaction);
       case "say":
@@ -149,6 +151,7 @@ async function handleInteraction(interaction, env, ctx) {
     if (action === "job-cancel" || action === "purge-cancel") return updateMessage("Cancelled.");
     if (action === "purge-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "purge", keepPinned: keepPinned === "1" });
     if (action === "anonymise-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "anonymise" });
+    if (action === "purgeanon-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "purge-anonymise", keepPinned: keepPinned === "1" });
   }
   if (interaction.type === InteractionType.MODAL_SUBMIT) {
     const [action, draftId] = interaction.data.custom_id.split(":");
@@ -213,6 +216,28 @@ function purgeCommand(interaction) {
   });
 }
 
+function purgeAndAnonymiseCommand(interaction) {
+  const options = interaction.data.options;
+  const target = resolveTargetChannel(interaction, options);
+  const problem = checkTarget(target, anonymisePermissions(target));
+  if (problem) return message(problem);
+
+  const keepPinned = getOption(options, "keep_pinned") === true;
+  const kept = keepPinned ? `protected (${SHIELD}) and pinned messages` : `protected (${SHIELD}) messages`;
+  return message(
+    [
+      `This will permanently delete every message in <#${target.id}> except ${kept}, then repost what's left as me, in the same order, and delete the originals.`,
+      "",
+      `- Reposts keep their ${SHIELD} and pins. Original timestamps and reactions are lost.`,
+      "- Threads in the channel are anonymised too, not deleted.",
+      "- Ask people not to post in the channel until it finishes.",
+      "",
+      "This cannot be undone.",
+    ].join("\n"),
+    { components: confirmButtons("Purge and anonymise", `purgeanon-confirm:${target.id}:${keepPinned ? 1 : 0}`) },
+  );
+}
+
 function anonymiseCommand(interaction) {
   const target = resolveTargetChannel(interaction, interaction.data.options);
   const problem = checkTarget(target, anonymisePermissions(target));
@@ -234,10 +259,17 @@ function anonymiseCommand(interaction) {
 }
 
 function describeResult(mode, result, channelId) {
+  const threadsNote = "Any threads are being anonymised separately in the background and may take a few more minutes.";
+  if (mode === "purge-anonymise") {
+    const soFar = `deleted ${result.purged} messages and reposted ${result.count} protected ones`;
+    if (result.status === "done") return `Finished <#${channelId}>: ${soFar}. ${threadsNote}`;
+    if (result.status === "failed") return `Stopped after I ${soFar}: ${describeFailure(result.error)}`;
+    return `So far I've ${soFar}. The rest of <#${channelId}> will be done in the background over the next few minutes.`;
+  }
   const verb = mode === "anonymise" ? "Reposted" : "Deleted";
   if (result.status === "done") {
     return mode === "anonymise"
-      ? `Finished anonymising <#${channelId}>: reposted ${result.count} messages. Any threads are being anonymised separately in the background and may take a few more minutes.`
+      ? `Finished anonymising <#${channelId}>: reposted ${result.count} messages. ${threadsNote}`
       : `Deleted ${result.count} messages in <#${channelId}>.`;
   }
   if (result.status === "failed") return `Stopped after ${result.count} messages: ${describeFailure(result.error)}`;
@@ -259,7 +291,8 @@ async function confirmJob(interaction, env, ctx, channelId, { mode, keepPinned =
         .catch(() => {});
     })(),
   );
-  return updateMessage(mode === "anonymise" ? `Anonymising <#${channelId}>...` : `Deleting messages in <#${channelId}>...`);
+  const starting = { anonymise: "Anonymising", "purge-anonymise": "Purging and anonymising" }[mode] ?? "Deleting messages in";
+  return updateMessage(`${starting} <#${channelId}>...`);
 }
 
 // --- /schedule ---------------------------------------------------------------------------------
@@ -274,12 +307,12 @@ async function scheduleCommand(interaction, env) {
     if (!at) return message("Time must be in 24-hour HH:MM format, e.g. `03:00`.");
     const target = resolveTargetChannel(interaction, sub.options);
     const action = getOption(sub.options, "action") ?? "purge";
-    const problem = checkTarget(target, action === "anonymise" ? anonymisePermissions(target) : PURGE_BOT_PERMISSIONS);
+    const problem = checkTarget(target, action === "purge" ? PURGE_BOT_PERMISSIONS : anonymisePermissions(target));
     if (problem) return message(problem);
 
     const day = getOption(sub.options, "day");
-    // Anonymising keeps pins anyway, so keep_pinned only applies to purges.
-    const keepPinned = action === "purge" && getOption(sub.options, "keep_pinned") === true;
+    // Anonymising keeps pins anyway, so keep_pinned only applies when deleting.
+    const keepPinned = action !== "anonymise" && getOption(sub.options, "keep_pinned") === true;
     const now = localNow(tz);
     const schedule = { time: at, day };
     // If today's slot has already passed, don't fire it straight away.
@@ -289,7 +322,7 @@ async function scheduleCommand(interaction, env) {
     )
       .bind(guildId, target.id, at, day, keepPinned ? 1 : 0, lastRun, action)
       .first();
-    const verb = action === "anonymise" ? "anonymised" : "cleared";
+    const verb = { anonymise: "anonymised", "purge-anonymise": "purged (keeping protected messages) then anonymised" }[action] ?? "cleared";
     return message(`Schedule #${row.id}: <#${target.id}> will be ${verb} ${describeDay(day)} at ${at} (${tz}).`);
   }
 
@@ -298,7 +331,7 @@ async function scheduleCommand(interaction, env) {
     if (!results.length) return message("No schedules.");
     const lines = results.map(
       (s) =>
-        `#${s.id}: ${s.action === "anonymise" ? "anonymise" : "clear"} <#${s.channel_id}> ${describeDay(s.day)} at ${s.time}${s.keep_pinned ? " (keeps pinned)" : ""}`,
+        `#${s.id}: ${{ anonymise: "anonymise", "purge-anonymise": "purge + anonymise" }[s.action] ?? "clear"} <#${s.channel_id}> ${describeDay(s.day)} at ${s.time}${s.keep_pinned ? " (keeps pinned)" : ""}`,
     );
     return message(`Times are ${tz}.\n${lines.join("\n")}`);
   }
