@@ -4,8 +4,10 @@ import { SAY_CHANNEL_TYPES } from "./say.js";
 
 const GUILD_TEXT = 0;
 const Option = { SUB_COMMAND: 1, STRING: 3, INTEGER: 4, BOOLEAN: 5, CHANNEL: 7, ATTACHMENT: 11 };
-const MANAGE_MESSAGES = String(1 << 13);
-const MANAGE_GUILD = String(1 << 5);
+// Every command is admin-only by default. Server admins can open a command up to other roles
+// under Server Settings → Integrations, but the bot also refuses non-admins unless ADMIN_ONLY
+// is set to "false" in wrangler.jsonc.
+const ADMINISTRATOR = String(1 << 3);
 
 // Guild install only, usable only inside servers.
 const guildOnly = { contexts: [0], integration_types: [0] };
@@ -16,7 +18,7 @@ export const COMMANDS = [
   {
     name: "purge",
     description: "Delete all messages in a channel",
-    default_member_permissions: MANAGE_MESSAGES,
+    default_member_permissions: ADMINISTRATOR,
     ...guildOnly,
     options: [
       { type: Option.CHANNEL, name: "channel", description: "Channel to clear (defaults to this one)", channel_types: [GUILD_TEXT] },
@@ -26,7 +28,7 @@ export const COMMANDS = [
   {
     name: "anonymise",
     description: "Repost every message in a channel as the bot, then delete the originals",
-    default_member_permissions: MANAGE_MESSAGES,
+    default_member_permissions: ADMINISTRATOR,
     ...guildOnly,
     options: [
       { type: Option.CHANNEL, name: "channel", description: "Channel to anonymise (defaults to this one)", channel_types: [GUILD_TEXT] },
@@ -35,8 +37,7 @@ export const COMMANDS = [
   {
     name: "say",
     description: "Post a message as the bot, without your name on it",
-    // Server admins can let other roles use this under Server Settings → Integrations.
-    default_member_permissions: MANAGE_MESSAGES,
+    default_member_permissions: ADMINISTRATOR,
     ...guildOnly,
     options: [
       { type: Option.CHANNEL, name: "channel", description: "Where to post (defaults to this channel)", channel_types: SAY_CHANNEL_TYPES },
@@ -46,7 +47,7 @@ export const COMMANDS = [
   {
     name: "schedule",
     description: "Manage scheduled channel purges",
-    default_member_permissions: MANAGE_MESSAGES,
+    default_member_permissions: ADMINISTRATOR,
     ...guildOnly,
     options: [
       {
@@ -78,7 +79,7 @@ export const COMMANDS = [
   {
     name: "export-members",
     description: "Download the server's member list as a CSV",
-    default_member_permissions: MANAGE_GUILD,
+    default_member_permissions: ADMINISTRATOR,
     ...guildOnly,
   },
 ];

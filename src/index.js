@@ -112,6 +112,11 @@ function checkTarget(target, botPermissions = PURGE_BOT_PERMISSIONS) {
 async function handleInteraction(interaction, env, ctx) {
   if (interaction.type === InteractionType.PING) return { type: Reply.PONG };
   if (!interaction.guild_id) return message("This bot only works inside servers.");
+  // Admin-only unless ADMIN_ONLY is "false" in wrangler.jsonc. Checked here as well as in the
+  // command defaults because server admins can open commands up to other roles in Discord.
+  if (env.ADMIN_ONLY !== "false" && !hasPermission(interaction.member?.permissions, Permission.ADMINISTRATOR)) {
+    return message("Only server admins can use this bot.");
+  }
 
   if (interaction.type === InteractionType.COMMAND) {
     switch (interaction.data.name) {

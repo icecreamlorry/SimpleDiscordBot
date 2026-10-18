@@ -1,6 +1,7 @@
 const API = "https://discord.com/api/v10";
 
 export const Permission = {
+  ADMINISTRATOR: 1n << 3n,
   VIEW_CHANNEL: 1n << 10n,
   SEND_MESSAGES: 1n << 11n,
   MANAGE_MESSAGES: 1n << 13n,

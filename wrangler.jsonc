@@ -9,6 +9,8 @@
   },
   "vars": {
     "BOT_TIMEZONE": "Europe/London",
+    // "true": only server admins can use the bot, whatever Discord's command settings say.
+    "ADMIN_ONLY": "true",
     // Developer Portal -> General Information -> Public Key. Not a secret.
     "DISCORD_PUBLIC_KEY": "3572079cccb56836cc548cfdad2d96ed7186293a1a72f39da23fc8223e782a43"
   },

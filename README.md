@@ -2,13 +2,15 @@
 
 A small Discord bot, hosted for free on Cloudflare Workers, that:
 
-- **`/purge [channel] [keep_pinned]`** deletes every message in a channel (asks for confirmation first). Needs Manage Messages.
-- **`/anonymise [channel]`** reposts every message in a channel as the bot, oldest first, then deletes the originals, so the channel keeps the same messages in the same order without showing who wrote them (asks for confirmation first). Needs Manage Messages.
-- **`/say [channel] [attachment]`** opens a pop-up where you write a message (multi-line, up to 4,000 characters), which the bot then posts as itself, so it's anonymous from the start. Mentions in it never ping anyone. You can only post where you could post yourself. Needs Manage Messages by default; to let other roles use it, go to Server Settings → Integrations → the bot → `/say`.
-- **`/schedule add | list | remove`** clears a channel automatically every day or on a chosen weekday at a set time (UK time). Needs Manage Messages.
-- **`/export-members`** sends you a CSV of the server's members (username, the display name shown in that server, and their roles), visible only to you. Needs Manage Server.
+- **`/purge [channel] [keep_pinned]`** deletes every message in a channel (asks for confirmation first).
+- **`/anonymise [channel]`** reposts every message in a channel as the bot, oldest first, then deletes the originals, so the channel keeps the same messages in the same order without showing who wrote them (asks for confirmation first).
+- **`/say [channel] [attachment]`** opens a pop-up where you write a message (multi-line, up to 4,000 characters), which the bot then posts as itself, so it's anonymous from the start. Mentions in it never ping anyone. You can only post where you could post yourself.
+- **`/schedule add | list | remove`** clears a channel automatically every day or on a chosen weekday at a set time (UK time).
+- **`/export-members`** sends you a CSV of the server's members (username, the display name shown in that server, and their roles), visible only to you.
 
 All replies are ephemeral (only the person who ran the command sees them).
+
+**Admin-only.** Every command needs the Administrator permission, and the bot itself refuses anyone else (including button presses and pop-ups), even if a command is opened up under Server Settings → Integrations. To relax this later, set `ADMIN_ONLY` to `"false"` in [wrangler.jsonc](wrangler.jsonc) and redeploy. The commands then follow Discord's Integrations settings, plus the bot's own checks (e.g. Manage Messages in the channel for `/purge`). To change which permission a command needs by default, edit `default_member_permissions` in [src/commands.js](src/commands.js) and run `npm run register`.
 
 ## How it works
 
@@ -22,7 +24,7 @@ Anonymising runs at roughly 20–30 messages a minute, since each message has to
 
 What `/anonymise` keeps and loses:
 - Kept: text (long Nitro messages are split in two), attachments up to 10 MB each, pins, bots' rich embeds, stickers as text notes, forwarded messages' content.
-- Polls become a text summary of the results: each answer with its vote count and percentage, the total, and whether the poll had closed (final results) or was still open when the channel was anonymised. Only totals are copied, never who voted.
+- Polls become a text summary of the results: each answer indented with its vote count and percentage, then the total, then on its own line whether the poll had closed (final results) or was still open when the channel was anonymised. Only totals are copied, never who voted.
 - Threads: a thread started from a message is rebuilt under the reposted message (same name, messages copied in order, archive/lock state kept), then the old thread is deleted, so links to it change. Every other thread in the channel, including private and archived ones, is anonymised in place and then re-archived/re-locked as it was. "X started a thread" notices become a bot message linking to the thread. Each thread runs as its own background job.
 - Lost: original timestamps, reactions, reply links. Other system messages ("X joined", boosts) are deleted, not reposted.
 - Reposts are sent as silent messages and never ping anyone.
