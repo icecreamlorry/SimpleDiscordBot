@@ -11,6 +11,8 @@ export const Permission = {
   MANAGE_THREADS: 1n << 34n,
   CREATE_PUBLIC_THREADS: 1n << 35n,
   SEND_MESSAGES_IN_THREADS: 1n << 38n,
+  // Split out of Manage Messages by Discord; needed to re-pin reposted messages.
+  PIN_MESSAGES: 1n << 51n,
   READ_MESSAGE_HISTORY: 1n << 16n,
   MANAGE_GUILD: 1n << 5n,
 };

@@ -14,6 +14,7 @@ import { jobInsert } from "./jobs.js";
 import { JobError, compareIds, deleteMessages } from "./messages.js";
 import { formatPoll } from "./poll.js";
 import { isProtected, setProtected } from "./protect.js";
+import { survivesPurge } from "./purge.js";
 
 const MAX_PAGES_PER_RUN = 3;
 const MAX_CONTENT = 2000;
@@ -206,7 +207,9 @@ async function repostPass(db, discord, job, progress, { target, deleteOriginals,
       }
 
       // Plan the whole page first so a missing intent is caught before anything changes.
-      const plans = messages.map(buildRepost);
+      // After a purge, Discord can still list messages it hasn't finished deleting for a moment.
+      // Anything that wouldn't survive the purge is a leftover: delete it, never repost it.
+      const plans = messages.map((m) => (job.mode === "purge-anonymise" && !survivesPurge(m, job) ? null : buildRepost(m)));
 
       for (const [i, message] of messages.entries()) {
         const plan = plans[i];

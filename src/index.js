@@ -88,6 +88,7 @@ const ANONYMISE_CHAT_PERMISSIONS = {
   "Embed Links": Permission.EMBED_LINKS,
   "Attach Files": Permission.ATTACH_FILES,
   "Add Reactions": Permission.ADD_REACTIONS, // re-adding 🛡️ to protected messages
+  "Pin Messages": Permission.PIN_MESSAGES, // re-pinning pinned messages
 };
 // Text channels can have threads, which need more permissions; voice and stage chats can't.
 const ANONYMISE_BOT_PERMISSIONS = {

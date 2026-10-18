@@ -1,6 +1,11 @@
 import { deleteMessages } from "./messages.js";
 import { isProtected } from "./protect.js";
 
+/** Purges keep messages the bot has shielded, and pinned ones if asked. */
+export function survivesPurge(message, job) {
+  return isProtected(message) || (job.keep_pinned === 1 && message.pinned === true);
+}
+
 // Each page of 100 messages costs some CPU to parse; Workers Free allows ~10 ms per run.
 const MAX_PAGES_PER_RUN = 8;
 
@@ -13,8 +18,7 @@ export async function purgeStep(db, discord, job, progress) {
   let cursor = job.cursor;
   for (let page = 0; page < MAX_PAGES_PER_RUN; page++) {
     const messages = await discord.request("GET", `/channels/${channel}/messages?limit=100${cursor ? `&before=${cursor}` : ""}`);
-    // Keep messages the bot has shielded, and pinned ones if asked.
-    const ids = messages.filter((m) => !isProtected(m) && !(job.keep_pinned && m.pinned)).map((m) => m.id);
+    const ids = messages.filter((m) => !survivesPurge(m, job)).map((m) => m.id);
     const total = ids.length;
     try {
       await deleteMessages(discord, channel, ids);

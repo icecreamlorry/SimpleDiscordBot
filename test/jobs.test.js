@@ -103,7 +103,9 @@ async function fakeDiscord(url, init = {}) {
     const limit = Number(u.searchParams.get("limit"));
     const after = u.searchParams.get("after");
     const before = u.searchParams.get("before");
-    const all = sortedMessages(channelId);
+    // Like real Discord, a channel can still list just-deleted messages for a moment.
+    const all = [...channel.messages, ...(channel.ghosts ?? [])].sort(byId);
+    if (channel.ghosts) channel.ghosts = [];
     const page = after ? all.filter((x) => compareIds(x.id, after) > 0).slice(0, limit) : all.filter((x) => !before || compareIds(x.id, before) < 0).slice(-limit);
     return json(200, page.reverse()); // Discord returns newest first
   }
@@ -135,6 +137,7 @@ async function fakeDiscord(url, init = {}) {
   if (method === "POST" && rest === "bulk-delete") {
     const ids = JSON.parse(init.body).messages;
     if (ids.some((id) => !channel.messages.some((x) => x.id === id))) return json(404, { code: 10008, message: "Unknown Message" });
+    if (channel.lagging) channel.ghosts = channel.messages.filter((x) => ids.includes(x.id));
     channel.messages = channel.messages.filter((x) => !ids.includes(x.id));
     return json(204, null);
   }
@@ -427,4 +430,17 @@ test("purge-and-anonymise deletes all but protected (and pinned) messages, then 
   assert.ok(allFromBot(CHANNEL));
   assert.equal(isProtected(after[0]), true, "still protected");
   assert.equal(after[1].pinned, true, "still pinned");
+});
+
+test("purge-and-anonymise never reposts messages Discord is still deleting", async () => {
+  channels[CHANNEL].lagging = true;
+  for (let i = 0; i < 9; i++) addMessage(CHANNEL, { author: ALICE, content: `delete ${i}` });
+  addMessage(CHANNEL, { author: BOB, content: "protected", reactions: botShield });
+  addMessage(CHANNEL, { author: BOT, content: "unprotected bot message" });
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "purge-anonymise" });
+  await runAllJobs(db, 45);
+  assert.deepEqual(contents(CHANNEL), ["protected"]);
+  assert.ok(allFromBot(CHANNEL));
 });

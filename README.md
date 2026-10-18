@@ -76,11 +76,12 @@ You need Node.js 20+ and a Cloudflare account.
 | Embed Links | `/anonymise` (copying bots' embeds) |
 | Attach Files | `/anonymise` (re-uploading attachments), `/say` |
 | Add Reactions | Protect from purge (adding 🛡️), `/anonymise` (re-protecting reposts) |
+| Pin Messages | `/anonymise` (re-pinning reposts of pinned messages) |
 | Create Public Threads | `/anonymise` (rebuilding threads under reposts) |
 | Send Messages in Threads | `/anonymise` (reposting inside threads), `/say` in threads |
 | Manage Threads | `/anonymise` (seeing private threads, unarchiving/unlocking and re-locking threads, deleting rebuilt threads' originals) |
 
-Permissions integer for an invite link: `326417640512`.
+Permissions integer for an invite link: `2252126231325760`.
 
 Privileged intents (Bot page): **Server Members Intent** for `/export-members`, **Message Content Intent** for `/anonymise`.
 

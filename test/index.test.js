@@ -30,7 +30,7 @@ async function send(payload, { sign = true } = {}) {
 const bits = (...n) => String(n.reduce((a, b) => a | (1n << BigInt(b)), 0n));
 // Discord reports every permission for admins.
 const ADMIN = String((1n << 50n) - 1n);
-const BOT_PERMS = bits(6, 10, 11, 13, 14, 15, 16, 34, 35, 38);
+const BOT_PERMS = bits(6, 10, 11, 13, 14, 15, 16, 34, 35, 38, 51);
 const base = { application_id: "1", token: "t", guild_id: "9", channel_id: "222", channel: { id: "222", type: 0 }, app_permissions: BOT_PERMS };
 const command = (name, options = [], member = ADMIN) => ({ ...base, type: 2, member: { user: { id: "5" }, permissions: member }, data: { name, options } });
 
