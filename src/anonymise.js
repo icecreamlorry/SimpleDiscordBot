@@ -261,9 +261,10 @@ async function listThreads(discord, guildId, channelId) {
         before = page.threads[page.threads.length - 1].thread_metadata.archive_timestamp;
       }
     } catch (e) {
-      // Archived private threads need Manage Threads; carry on with the rest.
-      if (!(e instanceof DiscordError && e.status === 403)) throw e;
-      console.error(JSON.stringify({ event: "thread_list_forbidden", channel_id: channelId, kind }));
+      // Voice and stage chats can't have threads (Discord refuses the request), and archived
+      // private threads need Manage Threads; either way, carry on with what we can list.
+      if (!(e instanceof DiscordError && (e.status === 400 || e.status === 403))) throw e;
+      if (e.status === 403) console.error(JSON.stringify({ event: "thread_list_forbidden", channel_id: channelId, kind }));
     }
   }
   return threads;

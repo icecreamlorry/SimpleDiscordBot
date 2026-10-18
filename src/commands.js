@@ -1,8 +1,8 @@
 // Slash command definitions, registered with Discord by scripts/register-commands.js.
 import { DAY_NAMES } from "./time.js";
+import { JOB_CHANNEL_TYPES } from "./discord.js";
 import { SAY_CHANNEL_TYPES } from "./say.js";
 
-const GUILD_TEXT = 0;
 const Option = { SUB_COMMAND: 1, STRING: 3, INTEGER: 4, BOOLEAN: 5, CHANNEL: 7, ATTACHMENT: 11 };
 // Every command is admin-only by default. Server admins can open a command up to other roles
 // under Server Settings → Integrations, but the bot also refuses non-admins unless ADMIN_ONLY
@@ -21,7 +21,7 @@ export const COMMANDS = [
     default_member_permissions: ADMINISTRATOR,
     ...guildOnly,
     options: [
-      { type: Option.CHANNEL, name: "channel", description: "Channel to clear (defaults to this one)", channel_types: [GUILD_TEXT] },
+      { type: Option.CHANNEL, name: "channel", description: "Channel to clear (defaults to this one)", channel_types: JOB_CHANNEL_TYPES },
       keepPinned,
     ],
   },
@@ -31,7 +31,7 @@ export const COMMANDS = [
     default_member_permissions: ADMINISTRATOR,
     ...guildOnly,
     options: [
-      { type: Option.CHANNEL, name: "channel", description: "Channel to anonymise (defaults to this one)", channel_types: [GUILD_TEXT] },
+      { type: Option.CHANNEL, name: "channel", description: "Channel to anonymise (defaults to this one)", channel_types: JOB_CHANNEL_TYPES },
     ],
   },
   {
@@ -55,7 +55,7 @@ export const COMMANDS = [
         name: "add",
         description: "Clear or anonymise a channel automatically at a set time",
         options: [
-          { type: Option.CHANNEL, name: "channel", description: "Channel to clear or anonymise", required: true, channel_types: [GUILD_TEXT] },
+          { type: Option.CHANNEL, name: "channel", description: "Channel to clear or anonymise", required: true, channel_types: JOB_CHANNEL_TYPES },
           { type: Option.STRING, name: "at", description: "Time in 24h HH:MM (UK time)", required: true },
           {
             type: Option.STRING,

@@ -1,4 +1,4 @@
-import { DiscordClient, DiscordError, OutOfBudget, Permission, hasPermission, verifyInteraction } from "./discord.js";
+import { ChannelType, DiscordClient, DiscordError, JOB_CHANNEL_TYPES, OutOfBudget, Permission, hasPermission, verifyInteraction } from "./discord.js";
 import { MEMBER_CSV_HEADER, memberRow, roleNameLookup } from "./csv.js";
 import { createJob, describeFailure, getJob, runJob } from "./jobs.js";
 import { runCron } from "./cron.js";
@@ -8,7 +8,6 @@ import { describeDay, localNow, parseTime, slotStarted } from "./time.js";
 const InteractionType = { PING: 1, COMMAND: 2, COMPONENT: 3, MODAL_SUBMIT: 5 };
 const Reply = { PONG: 1, MESSAGE: 4, DEFERRED_MESSAGE: 5, UPDATE_MESSAGE: 7, MODAL: 9 };
 const EPHEMERAL = 1 << 6;
-const GUILD_TEXT = 0;
 const MISSING_ACCESS = 50001;
 
 // Background work after replying to Discord gets ~30 s; stop a little before that.
@@ -82,18 +81,26 @@ const PURGE_BOT_PERMISSIONS = {
   "Read Message History": Permission.READ_MESSAGE_HISTORY,
   "Manage Messages": Permission.MANAGE_MESSAGES,
 };
-const ANONYMISE_BOT_PERMISSIONS = {
+const ANONYMISE_CHAT_PERMISSIONS = {
   ...PURGE_BOT_PERMISSIONS,
   "Send Messages": Permission.SEND_MESSAGES,
   "Embed Links": Permission.EMBED_LINKS,
   "Attach Files": Permission.ATTACH_FILES,
+};
+// Text channels can have threads, which need more permissions; voice and stage chats can't.
+const ANONYMISE_BOT_PERMISSIONS = {
+  ...ANONYMISE_CHAT_PERMISSIONS,
   "Create Public Threads": Permission.CREATE_PUBLIC_THREADS,
   "Send Messages in Threads": Permission.SEND_MESSAGES_IN_THREADS,
   "Manage Threads": Permission.MANAGE_THREADS,
 };
 
+function anonymisePermissions(target) {
+  return target.type === ChannelType.GUILD_TEXT ? ANONYMISE_BOT_PERMISSIONS : ANONYMISE_CHAT_PERMISSIONS;
+}
+
 function checkTarget(target, botPermissions = PURGE_BOT_PERMISSIONS) {
-  if (target.type !== GUILD_TEXT) return "That only works in text channels.";
+  if (!JOB_CHANNEL_TYPES.includes(target.type)) return "That only works in text channels and the chat in voice and stage channels.";
   if (!hasPermission(target.userPermissions, Permission.MANAGE_MESSAGES)) {
     return `You need Manage Messages in <#${target.id}>.`;
   }
@@ -184,7 +191,7 @@ function purgeCommand(interaction) {
 
 function anonymiseCommand(interaction) {
   const target = resolveTargetChannel(interaction, interaction.data.options);
-  const problem = checkTarget(target, ANONYMISE_BOT_PERMISSIONS);
+  const problem = checkTarget(target, anonymisePermissions(target));
   if (problem) return message(problem);
 
   return message(
@@ -243,7 +250,7 @@ async function scheduleCommand(interaction, env) {
     if (!at) return message("Time must be in 24-hour HH:MM format, e.g. `03:00`.");
     const target = resolveTargetChannel(interaction, sub.options);
     const action = getOption(sub.options, "action") ?? "purge";
-    const problem = checkTarget(target, action === "anonymise" ? ANONYMISE_BOT_PERMISSIONS : PURGE_BOT_PERMISSIONS);
+    const problem = checkTarget(target, action === "anonymise" ? anonymisePermissions(target) : PURGE_BOT_PERMISSIONS);
     if (problem) return message(problem);
 
     const day = getOption(sub.options, "day");

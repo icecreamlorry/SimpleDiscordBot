@@ -3,20 +3,19 @@
 // Slash command options can't hold line breaks, so the command opens a pop-up with a
 // multi-line text box. An attachment chosen in the command is kept in say_drafts until the
 // pop-up is submitted. Nothing records who sent a message.
-import { DiscordClient, DiscordError, Permission, hasPermission } from "./discord.js";
+import { ChannelType, DiscordClient, DiscordError, JOB_CHANNEL_TYPES, Permission, hasPermission } from "./discord.js";
 import { splitContent } from "./anonymise.js";
 
 export const DRAFT_TTL_MS = 15 * 60 * 1000;
 const MAX_TEXT = 4000;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const SUPPRESS_NOTIFICATIONS = 1 << 12;
-const ChannelType = { GUILD_TEXT: 0, GUILD_ANNOUNCEMENT: 5, PUBLIC_THREAD: 11, PRIVATE_THREAD: 12 };
-export const SAY_CHANNEL_TYPES = Object.values(ChannelType);
+export const SAY_CHANNEL_TYPES = [...JOB_CHANNEL_TYPES, ChannelType.GUILD_ANNOUNCEMENT, ChannelType.PUBLIC_THREAD, ChannelType.PRIVATE_THREAD];
 const isThread = (type) => type === ChannelType.PUBLIC_THREAD || type === ChannelType.PRIVATE_THREAD;
 
 /** Returns a problem message, or null if the user and bot can post there. */
 function checkSayTarget(target, withAttachment) {
-  if (!SAY_CHANNEL_TYPES.includes(target.type)) return "I can only post in text channels, announcement channels and threads.";
+  if (!SAY_CHANNEL_TYPES.includes(target.type)) return "I can only post in text, announcement, voice and stage channels, and threads.";
   const send = isThread(target.type) ? Permission.SEND_MESSAGES_IN_THREADS : Permission.SEND_MESSAGES;
   // You can only send as the bot where you could send yourself.
   if (!hasPermission(target.userPermissions, send)) return `You can't send messages in <#${target.id}>.`;

@@ -87,6 +87,9 @@ test("/say refuses channels the user can't post in, and threads need the thread 
   assert.match((await sayCommand({ data: {} }, env(db), target({ type: 11 }), undefined)).problem, /can't send messages/);
   const ok = await sayCommand({ data: {} }, env(db), target({ type: 11, userPermissions: perms(VIEW, SEND_IN_THREADS), appPermissions: perms(VIEW, SEND_IN_THREADS) }), undefined);
   assert.ok(ok.modal);
+  // Voice and stage channel chats are allowed too.
+  assert.ok((await sayCommand({ data: {} }, env(db), target({ type: 2 }), undefined)).modal);
+  assert.ok((await sayCommand({ data: {} }, env(db), target({ type: 13 }), undefined)).modal);
 });
 
 test("unknown or expired drafts send nothing", async () => {

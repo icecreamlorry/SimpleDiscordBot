@@ -10,6 +10,8 @@ A small Discord bot, hosted for free on Cloudflare Workers, that:
 
 All replies are ephemeral (only the person who ran the command sees them).
 
+`/purge`, `/anonymise`, `/schedule` and `/say` work in text channels and in the chat built into voice and stage channels (where Discord events take place). `/say` also works in announcement channels and threads.
+
 **Admin-only.** Every command needs the Administrator permission, and the bot itself refuses anyone else (including button presses and pop-ups), even if a command is opened up under Server Settings → Integrations. To relax this later, set `ADMIN_ONLY` to `"false"` in [wrangler.jsonc](wrangler.jsonc) and redeploy. The commands then follow Discord's Integrations settings, plus the bot's own checks (e.g. Manage Messages in the channel for `/purge`). To change which permission a command needs by default, edit `default_member_permissions` in [src/commands.js](src/commands.js) and run `npm run register`.
 
 ## How it works

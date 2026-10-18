@@ -63,6 +63,7 @@ async function fakeDiscord(url, init = {}) {
     return json(200, { threads: active.map(threadObject) });
   }
   if (method === "GET" && (m = path.match(/^\/channels\/(\d+)\/threads\/archived\/(public|private)$/))) {
+    if (channels[m[1]].voice) return json(400, { code: 50024, message: "Cannot execute action on this channel type" });
     const archived = Object.keys(channels).filter((id) => {
       const t = channels[id].thread;
       return t && t.parent_id === m[1] && t.archived && t.private === (m[2] === "private");
@@ -335,4 +336,18 @@ test("the cron starts scheduled anonymise and purge jobs", async () => {
   assert.deepEqual(contents(OTHER), []);
   const { results } = await db.prepare("SELECT last_run FROM schedules").all();
   assert.ok(results.every((r) => r.last_run === now.date), "each schedule runs once today");
+});
+
+test("voice and stage channel chats can be anonymised (they have no threads)", async () => {
+  const VOICE = "600";
+  channels[VOICE] = { messages: [], voice: true };
+  addMessage(VOICE, { author: ALICE, content: "event starting soon" });
+  addMessage(VOICE, { author: BOB, content: "can't wait" });
+
+  const db = fakeD1();
+  await createJob(db, GUILD, VOICE, { mode: "anonymise" });
+  const rounds = await runAllJobs(db, 20);
+  assert.equal(typeof rounds, "number", JSON.stringify(rounds));
+  assert.deepEqual(contents(VOICE), ["event starting soon", "can't wait"]);
+  assert.ok(allFromBot(VOICE));
 });

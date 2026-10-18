@@ -14,6 +14,11 @@ export const Permission = {
   MANAGE_GUILD: 1n << 5n,
 };
 
+export const ChannelType = { GUILD_TEXT: 0, GUILD_VOICE: 2, GUILD_ANNOUNCEMENT: 5, PUBLIC_THREAD: 11, PRIVATE_THREAD: 12, GUILD_STAGE_VOICE: 13 };
+// Channels /purge, /anonymise and /schedule work on: text channels and the text chat built
+// into voice and stage channels (where events happen).
+export const JOB_CHANNEL_TYPES = [ChannelType.GUILD_TEXT, ChannelType.GUILD_VOICE, ChannelType.GUILD_STAGE_VOICE];
+
 export function hasPermission(bitfield, permission) {
   return bitfield != null && (BigInt(bitfield) & permission) === permission;
 }
