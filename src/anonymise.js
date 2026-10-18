@@ -169,6 +169,7 @@ async function rebuildThread(db, discord, job, channelId, repostId, thread) {
  */
 async function repostPass(db, discord, job, progress, { target, deleteOriginals, rebuildThreads }) {
   const source = job.channel_id;
+  const botId = discord.userId();
   let cursor = job.cursor ?? "0";
   const pending = JSON.parse(job.pending_deletes ?? "[]");
   const save = () =>
@@ -201,6 +202,14 @@ async function repostPass(db, discord, job, progress, { target, deleteOriginals,
 
       for (const [i, message] of messages.entries()) {
         const plan = plans[i];
+        // Until the first repost, the bot's own messages are already in the right place, so
+        // leave them (and any thread on them, which is then anonymised in place). After that,
+        // they have to be reposted too, or they'd end up above the reposts.
+        if (target === source && progress.count === 0 && botId && message.author?.id === botId) {
+          cursor = message.id;
+          await save();
+          continue;
+        }
         // Leave enough requests to delete the originals already reposted, plus a margin for
         // rate-limit retries, so a repost is never cut off half-way.
         const reserve = pending.length + 4;

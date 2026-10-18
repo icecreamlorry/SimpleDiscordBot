@@ -14,6 +14,8 @@ const CHANNEL = "500";
 const BOT = { id: "1", username: "simplebot", bot: true };
 const ALICE = { id: "2", username: "alice" };
 const BOB = { id: "3", username: "bob" };
+// Bot tokens start with the bot's user ID in base64.
+const BOT_TOKEN = `${btoa(BOT.id)}.x.y`;
 
 // --- Fake Discord ------------------------------------------------------------------------------
 
@@ -142,7 +144,7 @@ async function runAllJobs(db, budget) {
     const { results: jobs } = await db.prepare("SELECT * FROM purge_jobs ORDER BY id").all();
     if (!jobs.length) return round;
     for (const job of jobs) {
-      const result = await runJob(db, new DiscordClient("token", { budget }), job);
+      const result = await runJob(db, new DiscordClient(BOT_TOKEN, { budget }), job);
       if (result.status === "failed") return { failed: result };
     }
   }
@@ -241,6 +243,31 @@ test("standalone threads, including private archived locked ones, are anonymised
   assert.ok(allFromBot(CHANNEL) && allFromBot(publicThread) && allFromBot(privateThread));
   assert.equal(channels[privateThread].thread.archived, true, "re-archived");
   assert.equal(channels[privateThread].thread.locked, true, "re-locked");
+});
+
+test("the bot's own messages at the start of a channel stay where they are", async () => {
+  const keptA = addMessage(CHANNEL, { author: BOT, content: "rules", pinned: true });
+  addMessage(CHANNEL, { author: BOB, type: 7 }); // a join message in between doesn't matter
+  const keptB = addMessage(CHANNEL, { author: BOT, content: "welcome" });
+  const keptThread = addThread(CHANNEL, { name: "Questions", starter: keptB });
+  addMessage(keptThread, { author: ALICE, content: "a question" });
+  addMessage(CHANNEL, { author: ALICE, content: "hi" });
+  addMessage(CHANNEL, { author: BOT, content: "bot message after someone else's" });
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  await runAllJobs(db, 20);
+
+  const after = sortedMessages(CHANNEL);
+  assert.deepEqual(after.map((m) => m.content), ["rules", "welcome", "hi", "bot message after someone else's"]);
+  assert.equal(after[0].id, keptA.id, "first bot message untouched");
+  assert.equal(after[1].id, keptB.id, "second bot message untouched");
+  assert.ok(after[0].pinned);
+  assert.notEqual(after[3].id, keptA.id);
+  assert.ok(allFromBot(CHANNEL));
+  // The kept message's thread stays attached and is anonymised in place.
+  assert.deepEqual(contents(keptThread), ["a question"]);
+  assert.ok(allFromBot(keptThread));
 });
 
 test("anonymise leaves messages posted after it started alone", async () => {

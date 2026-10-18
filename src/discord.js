@@ -41,6 +41,16 @@ export class DiscordClient {
     this.used = 0;
   }
 
+  /** The bot's own user ID, which is the first part of its token (base64). Null if unreadable. */
+  userId() {
+    try {
+      const id = atob(this.token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"));
+      return /^\d+$/.test(id) ? id : null;
+    } catch {
+      return null;
+    }
+  }
+
   remaining() {
     return this.budget - this.used;
   }
