@@ -8,6 +8,8 @@ A small Discord bot, hosted for free on Cloudflare Workers, that:
 - **`/schedule add | list | remove`** clears or anonymises a channel automatically every day or on a chosen weekday at a set time (UK time). Pick the `action` when adding (deleting is the default). After the first anonymise run, the bot's earlier messages stay in place, so each later run only reposts what's been posted since.
 - **`/export-members`** sends you a CSV of the server's members (username, the display name shown in that server, and their roles), visible only to you.
 
+- **Protect from purge / Unprotect from purge** (right-click a message → Apps) adds or removes the bot's 🛡️ reaction. Purges, including scheduled ones, keep any message with the bot's shield. A 🛡️ added by anyone else doesn't count. When a channel is anonymised, protected messages are reposted like the rest and the repost gets the shield too, so it stays protected.
+
 All replies are ephemeral (only the person who ran the command sees them).
 
 `/purge`, `/anonymise`, `/schedule` and `/say` work in text channels and in the chat built into voice and stage channels (where Discord events take place). `/say` also works in announcement channels and threads.
@@ -72,11 +74,12 @@ You need Node.js 20+ and a Cloudflare account.
 | Send Messages | `/anonymise` (reposting), `/say` |
 | Embed Links | `/anonymise` (copying bots' embeds) |
 | Attach Files | `/anonymise` (re-uploading attachments), `/say` |
+| Add Reactions | Protect from purge (adding 🛡️), `/anonymise` (re-protecting reposts) |
 | Create Public Threads | `/anonymise` (rebuilding threads under reposts) |
 | Send Messages in Threads | `/anonymise` (reposting inside threads), `/say` in threads |
 | Manage Threads | `/anonymise` (seeing private threads, unarchiving/unlocking and re-locking threads, deleting rebuilt threads' originals) |
 
-Permissions integer for an invite link: `326417640448`.
+Permissions integer for an invite link: `326417640512`.
 
 Privileged intents (Bot page): **Server Members Intent** for `/export-members`, **Message Content Intent** for `/anonymise`.
 

@@ -1,6 +1,7 @@
 // Slash command definitions, registered with Discord by scripts/register-commands.js.
 import { DAY_NAMES } from "./time.js";
 import { JOB_CHANNEL_TYPES } from "./discord.js";
+import { PROTECT_COMMAND, UNPROTECT_COMMAND } from "./protect.js";
 import { SAY_CHANNEL_TYPES } from "./say.js";
 
 const Option = { SUB_COMMAND: 1, STRING: 3, INTEGER: 4, BOOLEAN: 5, CHANNEL: 7, ATTACHMENT: 11 };
@@ -8,6 +9,7 @@ const Option = { SUB_COMMAND: 1, STRING: 3, INTEGER: 4, BOOLEAN: 5, CHANNEL: 7, 
 // under Server Settings → Integrations, but the bot also refuses non-admins unless ADMIN_ONLY
 // is set to "false" in wrangler.jsonc.
 const ADMINISTRATOR = String(1 << 3);
+const MESSAGE_COMMAND = 3;
 
 // Guild install only, usable only inside servers.
 const guildOnly = { contexts: [0], integration_types: [0] };
@@ -92,4 +94,7 @@ export const COMMANDS = [
     default_member_permissions: ADMINISTRATOR,
     ...guildOnly,
   },
+  // Right-click a message → Apps.
+  { type: MESSAGE_COMMAND, name: PROTECT_COMMAND, default_member_permissions: ADMINISTRATOR, ...guildOnly },
+  { type: MESSAGE_COMMAND, name: UNPROTECT_COMMAND, default_member_permissions: ADMINISTRATOR, ...guildOnly },
 ];

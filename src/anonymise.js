@@ -13,6 +13,7 @@ import { DiscordError, OutOfBudget } from "./discord.js";
 import { jobInsert } from "./jobs.js";
 import { JobError, compareIds, deleteMessages } from "./messages.js";
 import { formatPoll } from "./poll.js";
+import { isProtected, setProtected } from "./protect.js";
 
 const MAX_PAGES_PER_RUN = 3;
 const MAX_CONTENT = 2000;
@@ -61,7 +62,7 @@ function threadInfo(thread) {
  * Throws if the message looks empty because the bot can't read message content.
  */
 export function buildRepost(message) {
-  const base = { files: [], embeds: [], flags: SUPPRESS_NOTIFICATIONS, pinned: false, thread: null };
+  const base = { files: [], embeds: [], flags: SUPPRESS_NOTIFICATIONS, pinned: false, protect: false, thread: null };
 
   // "X started a thread": replace with a link to the thread, which names nobody.
   if (message.type === MessageType.THREAD_CREATED) {
@@ -103,13 +104,14 @@ export function buildRepost(message) {
     embeds,
     flags: SUPPRESS_NOTIFICATIONS | (message.flags & SUPPRESS_EMBEDS),
     pinned: message.pinned === true,
+    protect: isProtected(message), // shielded from purges; the repost gets the shield too
     thread: message.thread ? threadInfo(message.thread) : null,
   };
 }
 
-/** Requests needed to repost (downloads + posts + pin + new thread). */
+/** Requests needed to repost (downloads + posts + pin + shield + new thread). */
 function repostCost(plan) {
-  return plan.files.length + plan.chunks.length + (plan.pinned ? 1 : 0) + (plan.thread ? 1 : 0);
+  return plan.files.length + plan.chunks.length + (plan.pinned ? 1 : 0) + (plan.protect ? 1 : 0) + (plan.thread ? 1 : 0);
 }
 
 /** Posts the repost and returns the first message sent. */
@@ -135,6 +137,12 @@ async function repost(discord, channelId, plan) {
     // Never let a failed pin stop the repost being recorded, or it would be posted twice.
     await discord.request("PUT", `/channels/${channelId}/messages/pins/${first.id}`).catch((e) => {
       console.error(JSON.stringify({ event: "repin_failed", channel_id: channelId, message: e.message }));
+    });
+  }
+  if (plan.protect) {
+    // Same rule as pins: a failure here must not stop the repost being recorded.
+    await setProtected(discord, channelId, first.id, true).catch((e) => {
+      console.error(JSON.stringify({ event: "reprotect_failed", channel_id: channelId, message: e.message }));
     });
   }
   return first;

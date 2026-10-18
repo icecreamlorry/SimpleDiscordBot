@@ -2,6 +2,7 @@ import { ChannelType, DiscordClient, DiscordError, JOB_CHANNEL_TYPES, OutOfBudge
 import { MEMBER_CSV_HEADER, memberRow, roleNameLookup } from "./csv.js";
 import { createJob, describeFailure, getJob, runJob } from "./jobs.js";
 import { runCron } from "./cron.js";
+import { PROTECT_COMMAND, SHIELD, UNPROTECT_COMMAND, setProtected } from "./protect.js";
 import { sayCommand, sendSay } from "./say.js";
 import { describeDay, localNow, parseTime, slotStarted } from "./time.js";
 
@@ -86,6 +87,7 @@ const ANONYMISE_CHAT_PERMISSIONS = {
   "Send Messages": Permission.SEND_MESSAGES,
   "Embed Links": Permission.EMBED_LINKS,
   "Attach Files": Permission.ATTACH_FILES,
+  "Add Reactions": Permission.ADD_REACTIONS, // re-adding 🛡️ to protected messages
 };
 // Text channels can have threads, which need more permissions; voice and stage chats can't.
 const ANONYMISE_BOT_PERMISSIONS = {
@@ -132,6 +134,10 @@ async function handleInteraction(interaction, env, ctx) {
         return anonymiseCommand(interaction);
       case "say":
         return say(interaction, env);
+      case PROTECT_COMMAND:
+        return protectCommand(interaction, env, true);
+      case UNPROTECT_COMMAND:
+        return protectCommand(interaction, env, false);
       case "schedule":
         return scheduleCommand(interaction, env);
       case "export-members":
@@ -152,6 +158,22 @@ async function handleInteraction(interaction, env, ctx) {
     }
   }
   return message("Unknown command.");
+}
+
+// --- Protect / Unprotect from purge (right-click a message → Apps) -------------------------------
+
+async function protectCommand(interaction, env, on) {
+  try {
+    await setProtected(new DiscordClient(env.DISCORD_TOKEN, { budget: 3 }), interaction.channel_id, interaction.data.target_id, on);
+  } catch (e) {
+    console.error(JSON.stringify({ event: "protect_failed", channel_id: interaction.channel_id, status: e.status, message: e.message }));
+    return message(e.status === 403 ? "I need Add Reactions and Read Message History in this channel to do that." : "Sorry, that didn't work.");
+  }
+  return message(
+    on
+      ? `${SHIELD} Protected. Purges will keep this message, and anonymising will keep it protected.`
+      : "Unprotected. This message will be deleted by the next purge.",
+  );
 }
 
 // --- /say --------------------------------------------------------------------------------------

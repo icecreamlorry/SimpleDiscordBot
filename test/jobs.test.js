@@ -8,6 +8,7 @@ import { DiscordClient } from "../src/discord.js";
 import { createJob, runJob } from "../src/jobs.js";
 import { runCron } from "../src/cron.js";
 import { localNow } from "../src/time.js";
+import { SHIELD, isProtected, setProtected } from "../src/protect.js";
 import { compareIds, snowflakeAt } from "../src/messages.js";
 import { fakeD1, json } from "./helpers.js";
 
@@ -119,6 +120,13 @@ async function fakeDiscord(url, init = {}) {
     assert.deepEqual(payload.allowed_mentions, { parse: [] }, "reposts must not ping anyone");
     assert.ok(payload.content.length <= 2000);
     return json(200, addMessage(channelId, { author: BOT, content: payload.content, attachments: files, embeds: payload.embeds ?? [] }));
+  }
+  if ((m = rest?.match(/^(\d+)\/reactions\/([^/]+)\/@me$/))) {
+    const target = channel.messages.find((x) => x.id === m[1]);
+    const name = decodeURIComponent(m[2]);
+    target.reactions = (target.reactions ?? []).filter((r) => !(r.me && r.emoji.name === name));
+    if (method === "PUT") target.reactions.push({ emoji: { id: null, name }, me: true, count: 1 });
+    return json(204, null);
   }
   if (method === "PUT" && (m = rest?.match(/^pins\/(\d+)$/))) {
     channel.messages.find((x) => x.id === m[1]).pinned = true;
@@ -350,4 +358,46 @@ test("voice and stage channel chats can be anonymised (they have no threads)", a
   assert.equal(typeof rounds, "number", JSON.stringify(rounds));
   assert.deepEqual(contents(VOICE), ["event starting soon", "can't wait"]);
   assert.ok(allFromBot(VOICE));
+});
+
+const botShield = [{ emoji: { id: null, name: SHIELD }, me: true, count: 1 }];
+const memberShield = [{ emoji: { id: null, name: SHIELD }, me: false, count: 1 }];
+
+test("purges keep messages the bot has shielded, but not ones members shielded themselves", async () => {
+  addMessage(CHANNEL, { author: ALICE, content: "keep: bot shield", reactions: botShield });
+  addMessage(CHANNEL, { author: BOB, content: "delete: member shield", reactions: memberShield });
+  addMessage(CHANNEL, { author: BOB, content: "delete: nothing" });
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL);
+  await runAllJobs(db, 45);
+  assert.deepEqual(contents(CHANNEL), ["keep: bot shield"]);
+});
+
+test("anonymise reposts protected messages with the bot's shield on the repost", async () => {
+  addMessage(CHANNEL, { author: ALICE, content: "protected", reactions: botShield });
+  addMessage(CHANNEL, { author: BOB, content: "member shield only", reactions: memberShield });
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  await runAllJobs(db, 45);
+  const after = sortedMessages(CHANNEL);
+  assert.deepEqual(after.map((m) => m.content), ["protected", "member shield only"]);
+  assert.ok(allFromBot(CHANNEL));
+  assert.equal(isProtected(after[0]), true, "repost is protected");
+  assert.equal(isProtected(after[1]), false);
+
+  // ...so a purge afterwards keeps it.
+  await createJob(db, GUILD, CHANNEL);
+  await runAllJobs(db, 45);
+  assert.deepEqual(contents(CHANNEL), ["protected"]);
+});
+
+test("protect and unprotect add and remove the bot's shield", async () => {
+  const m = addMessage(CHANNEL, { author: ALICE, content: "hello" });
+  const discord = new DiscordClient(BOT_TOKEN);
+  await setProtected(discord, CHANNEL, m.id, true);
+  assert.equal(isProtected(m), true);
+  await setProtected(discord, CHANNEL, m.id, false);
+  assert.equal(isProtected(m), false);
 });
