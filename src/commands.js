@@ -1,8 +1,9 @@
 // Slash command definitions, registered with Discord by scripts/register-commands.js.
 import { DAY_NAMES } from "./time.js";
+import { SAY_CHANNEL_TYPES } from "./say.js";
 
 const GUILD_TEXT = 0;
-const Option = { SUB_COMMAND: 1, STRING: 3, INTEGER: 4, BOOLEAN: 5, CHANNEL: 7 };
+const Option = { SUB_COMMAND: 1, STRING: 3, INTEGER: 4, BOOLEAN: 5, CHANNEL: 7, ATTACHMENT: 11 };
 const MANAGE_MESSAGES = String(1 << 13);
 const MANAGE_GUILD = String(1 << 5);
 
@@ -29,6 +30,17 @@ export const COMMANDS = [
     ...guildOnly,
     options: [
       { type: Option.CHANNEL, name: "channel", description: "Channel to anonymise (defaults to this one)", channel_types: [GUILD_TEXT] },
+    ],
+  },
+  {
+    name: "say",
+    description: "Post a message as the bot, without your name on it",
+    // Server admins can let other roles use this under Server Settings → Integrations.
+    default_member_permissions: MANAGE_MESSAGES,
+    ...guildOnly,
+    options: [
+      { type: Option.CHANNEL, name: "channel", description: "Where to post (defaults to this channel)", channel_types: SAY_CHANNEL_TYPES },
+      { type: Option.ATTACHMENT, name: "attachment", description: "A file to include (up to 10 MB)" },
     ],
   },
   {

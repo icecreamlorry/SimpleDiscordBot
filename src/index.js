@@ -1,10 +1,11 @@
 import { DiscordClient, DiscordError, OutOfBudget, Permission, hasPermission, verifyInteraction } from "./discord.js";
 import { MEMBER_CSV_HEADER, memberRow, roleNameLookup } from "./csv.js";
 import { createJob, describeFailure, getJob, runJob } from "./jobs.js";
+import { cleanUpDrafts, sayCommand, sendSay } from "./say.js";
 import { describeDay, isDue, localNow, parseTime, slotStarted } from "./time.js";
 
-const InteractionType = { PING: 1, COMMAND: 2, COMPONENT: 3 };
-const Reply = { PONG: 1, MESSAGE: 4, DEFERRED_MESSAGE: 5, UPDATE_MESSAGE: 7 };
+const InteractionType = { PING: 1, COMMAND: 2, COMPONENT: 3, MODAL_SUBMIT: 5 };
+const Reply = { PONG: 1, MESSAGE: 4, DEFERRED_MESSAGE: 5, UPDATE_MESSAGE: 7, MODAL: 9 };
 const EPHEMERAL = 1 << 6;
 const GUILD_TEXT = 0;
 const MISSING_ACCESS = 50001;
@@ -118,6 +119,8 @@ async function handleInteraction(interaction, env, ctx) {
         return purgeCommand(interaction);
       case "anonymise":
         return anonymiseCommand(interaction);
+      case "say":
+        return say(interaction, env);
       case "schedule":
         return scheduleCommand(interaction, env);
       case "export-members":
@@ -130,7 +133,22 @@ async function handleInteraction(interaction, env, ctx) {
     if (action === "purge-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "purge", keepPinned: keepPinned === "1" });
     if (action === "anonymise-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "anonymise" });
   }
+  if (interaction.type === InteractionType.MODAL_SUBMIT) {
+    const [action, draftId] = interaction.data.custom_id.split(":");
+    if (action === "say") {
+      ctx.waitUntil(sendSay(interaction, env, draftId));
+      return { type: Reply.DEFERRED_MESSAGE, data: { flags: EPHEMERAL } };
+    }
+  }
   return message("Unknown command.");
+}
+
+// --- /say --------------------------------------------------------------------------------------
+
+async function say(interaction, env) {
+  const options = interaction.data.options;
+  const result = await sayCommand(interaction, env, resolveTargetChannel(interaction, options), getOption(options, "attachment"));
+  return result.problem ? message(result.problem) : { type: Reply.MODAL, data: result.modal };
 }
 
 // --- /purge and /anonymise ---------------------------------------------------------------------
@@ -311,6 +329,7 @@ async function runCron(env, scheduledTime) {
   const discord = new DiscordClient(env.DISCORD_TOKEN, { deadline: Date.now() + CRON_TIME_MS });
   const now = localNow(env.BOT_TIMEZONE, new Date(scheduledTime));
 
+  await cleanUpDrafts(db);
   const { results: schedules } = await db.prepare("SELECT * FROM schedules").all();
 
   // Hourly: forget servers the bot has been removed from.

@@ -38,6 +38,16 @@
       <td>No. Each message is held in memory only while it is being reposted. The copies are ordinary messages in the server, held by Discord like any other. While the job runs, the bot keeps the IDs of originals waiting to be deleted (not their content), until they are deleted.</td>
     </tr>
     <tr>
+      <td>Messages sent with <code>/say</code>, and any file attached</td>
+      <td>When someone uses <code>/say</code>, the bot posts their message (and file, if any) in the chosen channel under the bot's own name, so it doesn't show who wrote it.</td>
+      <td>The bot does not record who sent a message. Until the message is sent, it keeps the chosen channel and a link to any attached file, for at most 15 minutes. The posted message is an ordinary message in the server, held by Discord like any other.</td>
+    </tr>
+    <tr>
+      <td>Poll results in a channel being anonymised</td>
+      <td>When a poll is reposted during <code>/anonymise</code>, the bot copies the question, answers and the number of votes for each answer.</td>
+      <td>No. Only vote totals are used; the bot never looks up who voted for what.</td>
+    </tr>
+    <tr>
       <td>Server ID, channel ID and schedule settings (time, day, whether to keep pinned messages)</td>
       <td>When a server manager sets up a scheduled purge with <code>/schedule add</code>, so the bot knows what to clear and when.</td>
       <td>Yes, until the schedule is removed. It is also deleted automatically within an hour of the bot being removed from the server, or once the bot finds the channel has been deleted. This is not information about any individual.</td>

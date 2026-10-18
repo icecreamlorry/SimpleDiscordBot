@@ -12,6 +12,7 @@
 import { DiscordError, OutOfBudget } from "./discord.js";
 import { jobInsert } from "./jobs.js";
 import { JobError, compareIds, deleteMessages } from "./messages.js";
+import { formatPoll } from "./poll.js";
 
 const MAX_PAGES_PER_RUN = 3;
 const MAX_CONTENT = 2000;
@@ -73,7 +74,7 @@ export function buildRepost(message) {
   const source = message.message_snapshots?.[0]?.message ?? message;
   const notes = [];
   for (const sticker of source.sticker_items ?? []) notes.push(`[sticker: ${sticker.name}]`);
-  if (source.poll) notes.push(`[poll: ${source.poll.question?.text ?? ""}]`);
+  if (source.poll) notes.push(formatPoll(source.poll));
 
   const files = [];
   let totalBytes = 0;

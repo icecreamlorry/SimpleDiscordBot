@@ -2,42 +2,18 @@
 // SQLite database built from the migrations, and a small request budget per run so jobs
 // have to resume across many runs, the way the cron trigger drives them.
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, test } from "node:test";
 import { splitContent } from "../src/anonymise.js";
 import { DiscordClient } from "../src/discord.js";
 import { createJob, runJob } from "../src/jobs.js";
 import { compareIds, snowflakeAt } from "../src/messages.js";
+import { fakeD1, json } from "./helpers.js";
 
 const GUILD = "9";
 const CHANNEL = "500";
 const BOT = { id: "1", username: "simplebot", bot: true };
 const ALICE = { id: "2", username: "alice" };
 const BOB = { id: "3", username: "bob" };
-
-// --- Fake D1 backed by node:sqlite -------------------------------------------------------------
-
-function fakeD1() {
-  const sqlite = new DatabaseSync(":memory:");
-  for (const file of readdirSync(new URL("../migrations/", import.meta.url)).sort()) {
-    sqlite.exec(readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8"));
-  }
-  const statement = (sql, args = []) => ({
-    bind: (...a) => statement(sql, a),
-    run: async () => ({ meta: { changes: Number(sqlite.prepare(sql).run(...args).changes) } }),
-    first: async () => sqlite.prepare(sql).get(...args) ?? null,
-    all: async () => ({ results: sqlite.prepare(sql).all(...args) }),
-  });
-  return {
-    prepare: (sql) => statement(sql),
-    batch: async (statements) => {
-      const out = [];
-      for (const s of statements) out.push(await s.run());
-      return out;
-    },
-  };
-}
 
 // --- Fake Discord ------------------------------------------------------------------------------
 
@@ -69,10 +45,6 @@ function threadObject(id) {
 
 const byId = (a, b) => compareIds(a.id, b.id);
 const sortedMessages = (id) => [...channels[id].messages].sort(byId);
-
-function json(status, body) {
-  return new Response(body === null ? null : JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-}
 
 async function fakeDiscord(url, init = {}) {
   const u = new URL(url);

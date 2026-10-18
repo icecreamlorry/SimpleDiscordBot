@@ -4,6 +4,7 @@ A small Discord bot, hosted for free on Cloudflare Workers, that:
 
 - **`/purge [channel] [keep_pinned]`** deletes every message in a channel (asks for confirmation first). Needs Manage Messages.
 - **`/anonymise [channel]`** reposts every message in a channel as the bot, oldest first, then deletes the originals, so the channel keeps the same messages in the same order without showing who wrote them (asks for confirmation first). Needs Manage Messages.
+- **`/say [channel] [attachment]`** opens a pop-up where you write a message (multi-line, up to 4,000 characters), which the bot then posts as itself, so it's anonymous from the start. Mentions in it never ping anyone. You can only post where you could post yourself. Needs Manage Messages by default; to let other roles use it, go to Server Settings → Integrations → the bot → `/say`.
 - **`/schedule add | list | remove`** clears a channel automatically every day or on a chosen weekday at a set time (UK time). Needs Manage Messages.
 - **`/export-members`** sends you a CSV of the server's members (username, the display name shown in that server, and their roles), visible only to you. Needs Manage Server.
 
@@ -20,7 +21,8 @@ Workers Free allows about 50 Discord API calls per run, so big purges are done i
 Anonymising runs at roughly 20–30 messages a minute, since each message has to be reposted (Discord also rate-limits bots posting in one channel). Message content is only held in memory while a message is reposted; the database stores just a cursor and the IDs of originals waiting to be deleted.
 
 What `/anonymise` keeps and loses:
-- Kept: text (long Nitro messages are split in two), attachments up to 10 MB each, pins, bots' rich embeds, stickers and polls as text notes, forwarded messages' content.
+- Kept: text (long Nitro messages are split in two), attachments up to 10 MB each, pins, bots' rich embeds, stickers as text notes, forwarded messages' content.
+- Polls become a text summary of the results: each answer with its vote count and percentage, the total, and whether the poll had closed (final results) or was still open when the channel was anonymised. Only totals are copied, never who voted.
 - Threads: a thread started from a message is rebuilt under the reposted message (same name, messages copied in order, archive/lock state kept), then the old thread is deleted, so links to it change. Every other thread in the channel, including private and archived ones, is anonymised in place and then re-archived/re-locked as it was. "X started a thread" notices become a bot message linking to the thread. Each thread runs as its own background job.
 - Lost: original timestamps, reactions, reply links. Other system messages ("X joined", boosts) are deleted, not reposted.
 - Reposts are sent as silent messages and never ping anyone.
@@ -63,11 +65,11 @@ You need Node.js 20+ and a Cloudflare account.
 | View Channels | everything |
 | Read Message History | `/purge`, `/anonymise` |
 | Manage Messages | `/purge`, `/anonymise` (deleting messages) |
-| Send Messages | `/anonymise` (reposting) |
+| Send Messages | `/anonymise` (reposting), `/say` |
 | Embed Links | `/anonymise` (copying bots' embeds) |
-| Attach Files | `/anonymise` (re-uploading attachments) |
+| Attach Files | `/anonymise` (re-uploading attachments), `/say` |
 | Create Public Threads | `/anonymise` (rebuilding threads under reposts) |
-| Send Messages in Threads | `/anonymise` (reposting inside threads) |
+| Send Messages in Threads | `/anonymise` (reposting inside threads), `/say` in threads |
 | Manage Threads | `/anonymise` (seeing private threads, unarchiving/unlocking and re-locking threads, deleting rebuilt threads' originals) |
 
 Permissions integer for an invite link: `326417640448`.

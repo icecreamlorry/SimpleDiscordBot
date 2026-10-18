@@ -7,7 +7,7 @@
     "deploy": "wrangler deploy",
     "db:migrate": "wrangler d1 migrations apply simple-discord-bot --remote",
     "register": "node --env-file=.dev.vars scripts/register-commands.js",
-    "test": "node --test"
+    "test": "node --test test/*.test.js"
   },
   "devDependencies": {
     "wrangler": "^4.151.1"
