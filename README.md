@@ -33,7 +33,8 @@ What `/anonymise` keeps and loses:
 - Kept: text (long Nitro messages are split in two), attachments up to 10 MB each, pins, bots' rich embeds, stickers as text notes, forwarded messages' content.
 - Polls become a text summary of the results: each answer indented with its vote count and percentage, then the total, then on its own line whether the poll had closed (final results) or was still open when the channel was anonymised. Only totals are copied, never who voted.
 - Threads: a thread started from a message is rebuilt under the reposted message (same name, messages copied in order, archive/lock state kept), then the old thread is deleted, so links to it change. Every other thread in the channel, including private and archived ones, is anonymised in place and then re-archived/re-locked as it was. "X started a thread" notices become a bot message linking to the thread. Each thread runs as its own background job.
-- Lost: original timestamps, reactions, reply links. Other system messages ("X joined", boosts) are deleted, not reposted.
+- Dates: whenever the original posting date changes, the bot posts a divider like "── 12 October 2026 ──" (UK time). This carries on from the bot's existing messages, so if the channel ends with yesterday's reposts and the new messages are from today, a divider for today comes first. Old dividers at the top stay put; ones further down are recreated where they belong.
+- Lost: exact times, reactions, reply links. Other system messages ("X joined", boosts) are deleted, not reposted.
 - Reposts are sent as silent messages and never ping anyone.
 - Only messages that existed when it started are touched. Anything posted while it runs stays put, so ask people not to post until it finishes.
 

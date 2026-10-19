@@ -9,6 +9,7 @@ import { createJob, runJob } from "../src/jobs.js";
 import { runCron } from "../src/cron.js";
 import { localNow } from "../src/time.js";
 import { SHIELD, isProtected, setProtected } from "../src/protect.js";
+import { dividerText } from "../src/dividers.js";
 import { compareIds, snowflakeAt } from "../src/messages.js";
 import { fakeD1, json } from "./helpers.js";
 
@@ -176,7 +177,11 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-const contents = (id) => sortedMessages(id).map((m) => m.content);
+const isDivider = (m) => /^── \d{1,2} \w+ \d{4} ──$/.test(m.content);
+// Message text in order, leaving out date dividers (tests for those use rawContents).
+const contents = (id) => sortedMessages(id).filter((m) => !isDivider(m)).map((m) => m.content);
+const rawContents = (id) => sortedMessages(id).map((m) => m.content);
+const posts = (id) => sortedMessages(id).filter((m) => !isDivider(m));
 const allFromBot = (id) => sortedMessages(id).every((m) => m.author.bot);
 
 // --- Tests -------------------------------------------------------------------------------------
@@ -208,7 +213,7 @@ test("anonymise reposts the channel in order as the bot and removes the original
     ...Array.from({ length: 25 }, (_, i) => `message ${i}`),
   ]);
   assert.ok(allFromBot(CHANNEL));
-  const after = sortedMessages(CHANNEL);
+  const after = posts(CHANNEL);
   assert.equal(after.find((m) => m.content === "look").attachments[0].filename, "cat.png");
   assert.equal(after.find((m) => m.content === "old message from bob").pinned, true);
 });
@@ -230,7 +235,7 @@ test("threads started from messages are rebuilt under the repost and the old thr
   assert.ok(allFromBot(CHANNEL));
   assert.equal(channels[oldThread], undefined, "old thread deleted");
 
-  const repost = sortedMessages(CHANNEL)[1];
+  const repost = posts(CHANNEL)[1];
   const newThread = channels[repost.id];
   assert.ok(newThread?.thread, "repost has a thread");
   assert.equal(newThread.thread.name, "Discussion");
@@ -273,7 +278,7 @@ test("the bot's own messages at the start of a channel stay where they are", asy
   await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
   await runAllJobs(db, 20);
 
-  const after = sortedMessages(CHANNEL);
+  const after = posts(CHANNEL);
   assert.deepEqual(after.map((m) => m.content), ["rules", "welcome", "hi", "bot message after someone else's"]);
   assert.equal(after[0].id, keptA.id, "first bot message untouched");
   assert.equal(after[1].id, keptB.id, "second bot message untouched");
@@ -384,7 +389,7 @@ test("anonymise reposts protected messages with the bot's shield on the repost",
   const db = fakeD1();
   await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
   await runAllJobs(db, 45);
-  const after = sortedMessages(CHANNEL);
+  const after = posts(CHANNEL);
   assert.deepEqual(after.map((m) => m.content), ["protected", "member shield only"]);
   assert.ok(allFromBot(CHANNEL));
   assert.equal(isProtected(after[0]), true, "repost is protected");
@@ -425,7 +430,7 @@ test("purge-and-anonymise deletes all but protected (and pinned) messages, then 
   assert.equal(last.purged, 22);
   assert.equal(last.count, 2);
 
-  const after = sortedMessages(CHANNEL);
+  const after = posts(CHANNEL);
   assert.deepEqual(after.map((m) => m.content), ["protected", "pinned"]);
   assert.ok(allFromBot(CHANNEL));
   assert.equal(isProtected(after[0]), true, "still protected");
@@ -443,4 +448,61 @@ test("purge-and-anonymise never reposts messages Discord is still deleting", asy
   await runAllJobs(db, 45);
   assert.deepEqual(contents(CHANNEL), ["protected"]);
   assert.ok(allFromBot(CHANNEL));
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+// Midday UK time n days ago, so dates don't depend on when the tests run.
+function middayDaysAgo(n) {
+  const d = new Date(Date.now() - n * DAY);
+  d.setUTCHours(12, 0, 0, 0);
+  return d.getTime();
+}
+const dateOf = (ms) => localNow("Europe/London", new Date(ms)).date;
+
+test("anonymise adds a date divider whenever the original date changes", async () => {
+  const twoDaysAgo = middayDaysAgo(2);
+  const yesterday = middayDaysAgo(1);
+  addMessage(CHANNEL, { author: ALICE, content: "a" }, twoDaysAgo);
+  addMessage(CHANNEL, { author: BOB, content: "b" }, twoDaysAgo + 60_000);
+  addMessage(CHANNEL, { author: ALICE, content: "c" }, yesterday);
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  await runAllJobs(db, 10); // small budget: dividers must survive being cut off between runs
+  assert.deepEqual(rawContents(CHANNEL), [dividerText(dateOf(twoDaysAgo)), "a", "b", dividerText(dateOf(yesterday)), "c"]);
+  assert.ok(allFromBot(CHANNEL));
+});
+
+test("dividers carry on from the bot's existing messages", async () => {
+  const yesterday = middayDaysAgo(1);
+  const today = Date.now();
+  // Left by an earlier anonymise: yesterday's divider and a repost.
+  addMessage(CHANNEL, { author: BOT, content: dividerText(dateOf(yesterday)) }, yesterday + 60_000);
+  addMessage(CHANNEL, { author: BOT, content: "from yesterday" }, yesterday + 120_000);
+  addMessage(CHANNEL, { author: ALICE, content: "new today" }, today - 1000);
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  await runAllJobs(db, 45);
+  assert.deepEqual(rawContents(CHANNEL), [dividerText(dateOf(yesterday)), "from yesterday", dividerText(dateOf(today)), "new today"]);
+
+  // Running again with nothing new changes nothing.
+  const before = sortedMessages(CHANNEL).map((m) => m.id);
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  await runAllJobs(db, 45);
+  assert.deepEqual(sortedMessages(CHANNEL).map((m) => m.id), before);
+});
+
+test("old dividers further down are replaced, and reposts keep their original date", async () => {
+  const threeDaysAgo = middayDaysAgo(3);
+  const twoDaysAgo = middayDaysAgo(2);
+  addMessage(CHANNEL, { author: ALICE, content: "human first" }, threeDaysAgo);
+  // An earlier divider and repost from two days ago, reposted again (they're not at the top).
+  addMessage(CHANNEL, { author: BOT, content: dividerText(dateOf(twoDaysAgo)) }, twoDaysAgo);
+  addMessage(CHANNEL, { author: BOT, content: "old repost" }, Date.now() - 1000);
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  await runAllJobs(db, 45);
+  assert.deepEqual(rawContents(CHANNEL), [dividerText(dateOf(threeDaysAgo)), "human first", dividerText(dateOf(twoDaysAgo)), "old repost"]);
 });

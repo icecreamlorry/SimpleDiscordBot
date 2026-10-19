@@ -33,7 +33,7 @@ export async function runCron(env, scheduledTime) {
   const { results: jobs } = await db.prepare("SELECT * FROM purge_jobs ORDER BY id").all();
   for (const job of jobs) {
     if (discord.remaining() < 3 || discord.timeLeft() < 5_000) break;
-    const result = await runJob(db, discord, job);
+    const result = await runJob(db, discord, job, { timeZone: env.BOT_TIMEZONE });
     console.log(JSON.stringify({ event: "job_progress", mode: job.mode, channel_id: job.channel_id, status: result.status, count: result.count }));
   }
 }

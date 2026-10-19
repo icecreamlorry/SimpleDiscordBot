@@ -239,7 +239,7 @@ function purgeAndAnonymiseCommand(interaction) {
     [
       `This will permanently delete every message in <#${target.id}> except ${kept}, then repost what's left as me, in the same order, and delete the originals.`,
       "",
-      `- Reposts keep their ${SHIELD} and pins. Original timestamps and reactions are lost.`,
+      `- Reposts keep their ${SHIELD} and pins, with date dividers showing which day they were first posted. Exact times and reactions are lost.`,
       "- Threads in the channel are anonymised too, not deleted.",
       "- Ask people not to post in the channel until it finishes.",
       "",
@@ -259,7 +259,7 @@ function anonymiseCommand(interaction) {
       `This will repost every message in <#${target.id}> as me, oldest first, then delete the originals, so the channel keeps the same messages in the same order without showing who wrote them.`,
       "",
       "- Threads are anonymised too. Threads started from a message are rebuilt under the reposted message (so their links change); other threads, including private and archived ones, are anonymised where they are.",
-      "- Original timestamps, reactions and reply links are lost. Pins, attachments (up to 10 MB each), stickers and polls (as text notes) are kept.",
+      "- Date dividers show which day messages were first posted; exact times, reactions and reply links are lost. Pins, attachments (up to 10 MB each), stickers and polls (as text notes) are kept.",
       "- It runs at roughly 20–30 messages a minute. Ask people not to post in the channel until it finishes, or new messages will end up in the middle.",
       "- It removes names, not identities: what people wrote may still identify them, and Discord's audit log can show admins whose older messages were deleted.",
       "",
@@ -295,7 +295,7 @@ async function confirmJob(interaction, env, ctx, channelId, { mode, keepPinned =
     (async () => {
       const discord = backgroundClient(env);
       const job = await getJob(env.DB, channelId);
-      const result = await runJob(env.DB, discord, job);
+      const result = await runJob(env.DB, discord, job, { timeZone: env.BOT_TIMEZONE });
       // A fresh client so the edit still goes through if the job used the whole allowance.
       await new DiscordClient(env.DISCORD_TOKEN, { budget: 2 })
         .editOriginal(interaction.application_id, interaction.token, { json: { content: describeResult(mode, result, channelId), components: [] } })

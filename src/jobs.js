@@ -15,7 +15,7 @@ const UNKNOWN_CHANNEL = 10003;
  * left. The purge phase works newest-first with a "before" cursor; the anonymise phase starts
  * again from the oldest message with its own cursor and count.
  */
-async function purgeThenAnonymiseStep(db, discord, job, progress) {
+async function purgeThenAnonymiseStep(db, discord, job, progress, options) {
   if (job.phase === "purge") {
     if (!(await purgeStep(db, discord, job, progress))) return false;
     await db
@@ -26,7 +26,7 @@ async function purgeThenAnonymiseStep(db, discord, job, progress) {
     progress.count = 0;
     job = { ...job, phase: "messages", purged: progress.purged, deleted: 0, cursor: null };
   }
-  return anonymiseStep(db, discord, job, progress);
+  return anonymiseStep(db, discord, job, progress, options);
 }
 
 const STEPS = { purge: purgeStep, anonymise: anonymiseStep, "purge-anonymise": purgeThenAnonymiseStep, "copy-thread": copyThreadStep };
@@ -78,7 +78,7 @@ export async function getJob(db, channelId) {
  * count is messages deleted (purge) or reposted (anonymise, purge-anonymise), and purged is
  * messages deleted by a purge-anonymise job's purge phase.
  */
-export async function runJob(db, discord, job) {
+export async function runJob(db, discord, job, { timeZone = "Europe/London" } = {}) {
   const now = Date.now();
   const lease = await db
     .prepare("UPDATE purge_jobs SET locked_until = ? WHERE id = ? AND (locked_until IS NULL OR locked_until < ?)")
@@ -88,7 +88,7 @@ export async function runJob(db, discord, job) {
 
   const progress = { count: job.deleted, purged: job.purged ?? 0 };
   try {
-    const done = await STEPS[job.mode ?? "purge"](db, discord, job, progress);
+    const done = await STEPS[job.mode ?? "purge"](db, discord, job, progress, { timeZone });
     if (done) {
       await db.prepare("DELETE FROM purge_jobs WHERE id = ?").bind(job.id).run();
       return { status: "done", count: progress.count, purged: progress.purged };

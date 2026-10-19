@@ -15,6 +15,7 @@ import { JobError, compareIds, deleteMessages } from "./messages.js";
 import { formatPoll } from "./poll.js";
 import { isProtected, setProtected } from "./protect.js";
 import { survivesPurge } from "./purge.js";
+import { dividerDate, dividerText, messageDate } from "./dividers.js";
 
 const MAX_PAGES_PER_RUN = 3;
 const MAX_CONTENT = 2000;
@@ -176,15 +177,21 @@ async function rebuildThread(db, discord, job, channelId, repostId, thread) {
  * the originals if `deleteOriginals`. Only messages with ID <= job.end_id are touched (when
  * set), so the bot never reposts its own reposts. Returns true when there's nothing left.
  */
-async function repostPass(db, discord, job, progress, { target, deleteOriginals, rebuildThreads }) {
+async function repostPass(db, discord, job, progress, { target, deleteOriginals, rebuildThreads, timeZone }) {
   const source = job.channel_id;
   const botId = discord.userId();
   let cursor = job.cursor ?? "0";
   const pending = JSON.parse(job.pending_deletes ?? "[]");
+  // Date dividers: outputDate is the last date marked in the channel as it now reads;
+  // sourceDate is the date of what's being read, which the bot's earlier reposts can't tell
+  // from their own timestamps (that's when they were reposted), so it comes from the last
+  // divider or message before them.
+  let outputDate = job.last_date ?? null;
+  let sourceDate = job.source_date ?? null;
   const save = () =>
     db
-      .prepare("UPDATE purge_jobs SET cursor = ?, deleted = ?, pending_deletes = ? WHERE id = ?")
-      .bind(cursor, progress.count, JSON.stringify(pending), job.id)
+      .prepare("UPDATE purge_jobs SET cursor = ?, deleted = ?, pending_deletes = ?, last_date = ?, source_date = ? WHERE id = ?")
+      .bind(cursor, progress.count, JSON.stringify(pending), outputDate, sourceDate, job.id)
       .run();
   const flush = async () => {
     try {
@@ -212,20 +219,39 @@ async function repostPass(db, discord, job, progress, { target, deleteOriginals,
       const plans = messages.map((m) => (job.mode === "purge-anonymise" && !survivesPurge(m, job) ? null : buildRepost(m)));
 
       for (const [i, message] of messages.entries()) {
-        const plan = plans[i];
+        const fromBot = botId != null && message.author?.id === botId;
+        const divider = fromBot ? dividerDate(message.content) : null;
+        // Old dividers are never reposted; new ones are posted where they're needed.
+        const plan = divider ? null : plans[i];
+        const date = divider ?? (fromBot && sourceDate ? sourceDate : messageDate(message.id, timeZone));
+
         // Until the first repost, the bot's own messages are already in the right place, so
         // leave them (and any thread on them, which is then anonymised in place). After that,
         // they have to be reposted too, or they'd end up above the reposts.
-        if (target === source && progress.count === 0 && botId && message.author?.id === botId) {
+        const leftover = job.mode === "purge-anonymise" && !survivesPurge(message, job);
+        if (target === source && progress.count === 0 && fromBot && !leftover) {
+          if (divider || !outputDate) outputDate = date;
+          sourceDate = date;
           cursor = message.id;
           await save();
           continue;
         }
+        sourceDate = date;
+
         // Leave enough requests to delete the originals already reposted, plus a margin for
         // rate-limit retries, so a repost is never cut off half-way.
+        const needsDivider = plan != null && date !== outputDate;
         const reserve = pending.length + 4;
-        if (discord.remaining() < (plan ? repostCost(plan) : 0) + reserve || discord.timeLeft() < 10_000) {
+        if (discord.remaining() < (plan ? repostCost(plan) : 0) + (needsDivider ? 1 : 0) + reserve || discord.timeLeft() < 10_000) {
           throw new OutOfBudget();
+        }
+        if (needsDivider) {
+          await discord.request("POST", `/channels/${target}/messages`, {
+            json: { content: dividerText(date), flags: SUPPRESS_NOTIFICATIONS, allowed_mentions: { parse: [] } },
+          });
+          // Saved before the repost, so a run cut off here doesn't post the divider twice.
+          outputDate = date;
+          await save();
         }
         if (plan) {
           const first = await repost(discord, target, plan);
@@ -308,7 +334,7 @@ async function queueThreads(db, discord, job) {
 }
 
 /** Anonymises a channel or a standalone thread in place. Returns true when finished. */
-export async function anonymiseStep(db, discord, job, progress) {
+export async function anonymiseStep(db, discord, job, progress, { timeZone = "Europe/London" } = {}) {
   const isThread = job.thread_parent_id != null;
 
   if (job.phase === "threads") {
@@ -324,7 +350,7 @@ export async function anonymiseStep(db, discord, job, progress) {
     await discord.request("PUT", `/channels/${job.channel_id}/thread-members/@me`);
   }
 
-  const done = await repostPass(db, discord, job, progress, { target: job.channel_id, deleteOriginals: true, rebuildThreads: !isThread });
+  const done = await repostPass(db, discord, job, progress, { target: job.channel_id, deleteOriginals: true, rebuildThreads: !isThread, timeZone });
   if (!done) return false;
 
   if (isThread) {
@@ -337,8 +363,8 @@ export async function anonymiseStep(db, discord, job, progress) {
 }
 
 /** Copies an old thread's messages into its replacement, then deletes the old thread. */
-export async function copyThreadStep(db, discord, job, progress) {
-  const done = await repostPass(db, discord, job, progress, { target: job.target_channel_id, deleteOriginals: false, rebuildThreads: false });
+export async function copyThreadStep(db, discord, job, progress, { timeZone = "Europe/London" } = {}) {
+  const done = await repostPass(db, discord, job, progress, { target: job.target_channel_id, deleteOriginals: false, rebuildThreads: false, timeZone });
   if (!done) return false;
 
   await restoreThreadState(discord, job.target_channel_id, job);
