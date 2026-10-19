@@ -16,6 +16,7 @@ import { formatPoll } from "./poll.js";
 import { isProtected, setProtected } from "./protect.js";
 import { survivesPurge } from "./purge.js";
 import { dividerDate, dividerText, messageDate } from "./dividers.js";
+import { localNow } from "./time.js";
 
 const MAX_PAGES_PER_RUN = 3;
 const MAX_CONTENT = 2000;
@@ -188,10 +189,12 @@ async function repostPass(db, discord, job, progress, { target, deleteOriginals,
   // divider or message before them.
   let outputDate = job.last_date ?? null;
   let sourceDate = job.source_date ?? null;
+  // The real posting date of the last message left untouched at the top, if any.
+  let keptDate = job.kept_date ?? null;
   const save = () =>
     db
-      .prepare("UPDATE purge_jobs SET cursor = ?, deleted = ?, pending_deletes = ?, last_date = ?, source_date = ? WHERE id = ?")
-      .bind(cursor, progress.count, JSON.stringify(pending), outputDate, sourceDate, job.id)
+      .prepare("UPDATE purge_jobs SET cursor = ?, deleted = ?, pending_deletes = ?, last_date = ?, source_date = ?, kept_date = ? WHERE id = ?")
+      .bind(cursor, progress.count, JSON.stringify(pending), outputDate, sourceDate, keptDate, job.id)
       .run();
   const flush = async () => {
     try {
@@ -232,6 +235,7 @@ async function repostPass(db, discord, job, progress, { target, deleteOriginals,
         if (target === source && progress.count === 0 && fromBot && !leftover) {
           if (divider || !outputDate) outputDate = date;
           sourceDate = date;
+          keptDate = messageDate(message.id, timeZone);
           cursor = message.id;
           await save();
           continue;
@@ -240,6 +244,11 @@ async function repostPass(db, discord, job, progress, { target, deleteOriginals,
 
         // Leave enough requests to delete the originals already reposted, plus a margin for
         // rate-limit retries, so a repost is never cut off half-way.
+        // Discord draws its own date line where the posting date changes. Above the first repost
+        // that line shows today, so when an untouched message from an earlier day sits above it
+        // and the content really is from today, Discord's line already says the right thing.
+        const discordShowsDate = progress.count === 0 && keptDate != null && date === localNow(timeZone).date && keptDate !== date;
+        if (plan != null && date !== outputDate && discordShowsDate) outputDate = date;
         const needsDivider = plan != null && date !== outputDate;
         const reserve = pending.length + 4;
         if (discord.remaining() < (plan ? repostCost(plan) : 0) + (needsDivider ? 1 : 0) + reserve || discord.timeLeft() < 10_000) {

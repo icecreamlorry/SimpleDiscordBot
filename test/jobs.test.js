@@ -473,7 +473,7 @@ test("anonymise adds a date divider whenever the original date changes", async (
   assert.ok(allFromBot(CHANNEL));
 });
 
-test("dividers carry on from the bot's existing messages", async () => {
+test("no divider where Discord's own date line already says the same thing", async () => {
   const yesterday = middayDaysAgo(1);
   const today = Date.now();
   // Left by an earlier anonymise: yesterday's divider and a repost.
@@ -484,7 +484,8 @@ test("dividers carry on from the bot's existing messages", async () => {
   const db = fakeD1();
   await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
   await runAllJobs(db, 45);
-  assert.deepEqual(rawContents(CHANNEL), [dividerText(dateOf(yesterday)), "from yesterday", dividerText(dateOf(today)), "new today"]);
+  // No divider for today: Discord shows its own date line there, and it's correct.
+  assert.deepEqual(rawContents(CHANNEL), [dividerText(dateOf(yesterday)), "from yesterday", "new today"]);
 
   // Running again with nothing new changes nothing.
   const before = sortedMessages(CHANNEL).map((m) => m.id);
@@ -505,4 +506,24 @@ test("old dividers further down are replaced, and reposts keep their original da
   await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
   await runAllJobs(db, 45);
   assert.deepEqual(rawContents(CHANNEL), [dividerText(dateOf(threeDaysAgo)), "human first", dividerText(dateOf(twoDaysAgo)), "old repost"]);
+});
+
+test("a divider is still added when Discord's own date line would show the wrong day", async () => {
+  const twoDaysAgo = middayDaysAgo(2);
+  const yesterday = middayDaysAgo(1);
+  addMessage(CHANNEL, { author: BOT, content: "kept from two days ago" }, twoDaysAgo);
+  // Written yesterday, anonymised today: Discord's line above the repost would say today.
+  addMessage(CHANNEL, { author: ALICE, content: "written yesterday" }, yesterday);
+  addMessage(CHANNEL, { author: BOB, content: "written today" }, Date.now() - 1000);
+
+  const db = fakeD1();
+  await createJob(db, GUILD, CHANNEL, { mode: "anonymise" });
+  await runAllJobs(db, 45);
+  assert.deepEqual(rawContents(CHANNEL), [
+    "kept from two days ago",
+    dividerText(dateOf(yesterday)),
+    "written yesterday",
+    dividerText(dateOf(Date.now())),
+    "written today",
+  ]);
 });
