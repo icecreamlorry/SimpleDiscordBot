@@ -11,6 +11,8 @@ A small Discord bot, hosted for free on Cloudflare Workers, that:
 
 - **Protect from purge / Unprotect from purge** (right-click a message → Apps) adds or removes the bot's 🛡️ reaction. Purges, including scheduled ones, keep any message with the bot's shield. A 🛡️ added by anyone else doesn't count. When a channel is anonymised, protected messages are reposted like the rest and the repost gets the shield too, so it stays protected.
 
+- **Edit bot message** (right-click one of the bot's messages → Apps) opens a pop-up with its current text so you can fix it. The bot edits the message in place; attachments, 🛡️ and pins stay, nobody is pinged, and Discord shows "(edited)".
+
 All replies are ephemeral (only the person who ran the command sees them).
 
 `/purge`, `/anonymise`, `/schedule` and `/say` work in text channels and in the chat built into voice and stage channels (where Discord events take place). `/say` also works in announcement channels and threads.

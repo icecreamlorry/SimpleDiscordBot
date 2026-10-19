@@ -2,6 +2,7 @@ import { ChannelType, DiscordClient, DiscordError, JOB_CHANNEL_TYPES, OutOfBudge
 import { MEMBER_CSV_HEADER, memberRow, roleNameLookup } from "./csv.js";
 import { createJob, describeFailure, getJob, runJob } from "./jobs.js";
 import { runCron } from "./cron.js";
+import { EDIT_COMMAND, editCommand, submitEdit } from "./edit.js";
 import { PROTECT_COMMAND, SHIELD, UNPROTECT_COMMAND, setProtected } from "./protect.js";
 import { sayCommand, sendSay } from "./say.js";
 import { describeDay, localNow, parseTime, slotStarted } from "./time.js";
@@ -141,6 +142,11 @@ async function handleInteraction(interaction, env, ctx) {
         return protectCommand(interaction, env, true);
       case UNPROTECT_COMMAND:
         return protectCommand(interaction, env, false);
+      case EDIT_COMMAND: {
+        const botId = new DiscordClient(env.DISCORD_TOKEN).userId() ?? interaction.application_id;
+        const result = editCommand(interaction, botId);
+        return result.problem ? message(result.problem) : { type: Reply.MODAL, data: result.modal };
+      }
       case "schedule":
         return scheduleCommand(interaction, env);
       case "export-members":
@@ -155,9 +161,13 @@ async function handleInteraction(interaction, env, ctx) {
     if (action === "purgeanon-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "purge-anonymise", keepPinned: keepPinned === "1" });
   }
   if (interaction.type === InteractionType.MODAL_SUBMIT) {
-    const [action, draftId] = interaction.data.custom_id.split(":");
+    const [action, id] = interaction.data.custom_id.split(":");
     if (action === "say") {
-      ctx.waitUntil(sendSay(interaction, env, draftId));
+      ctx.waitUntil(sendSay(interaction, env, id));
+      return { type: Reply.DEFERRED_MESSAGE, data: { flags: EPHEMERAL } };
+    }
+    if (action === "edit") {
+      ctx.waitUntil(submitEdit(interaction, env, id));
       return { type: Reply.DEFERRED_MESSAGE, data: { flags: EPHEMERAL } };
     }
   }

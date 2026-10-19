@@ -77,3 +77,11 @@ test("every other command still routes", async () => {
   }
   assert.equal((await send(command("say"))).body.type, 9, "/say opens a pop-up");
 });
+
+test("right-clicking a bot message opens the edit pop-up", async () => {
+  // With no readable bot ID in the token, the bot falls back to the application ID ("1").
+  const target = { id: "50", author: { id: "1" }, content: "old text" };
+  const res = await send({ ...base, type: 2, member: { user: { id: "5" }, permissions: ADMIN }, data: { type: 3, name: "Edit bot message", target_id: "50", resolved: { messages: { 50: target } } } });
+  assert.equal(res.body.type, 9);
+  assert.equal(res.body.data.components[0].components[0].value, "old text");
+});
