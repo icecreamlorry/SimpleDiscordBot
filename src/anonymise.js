@@ -118,7 +118,7 @@ function repostCost(plan) {
 }
 
 /** Posts the repost and returns the first message sent. */
-async function repost(discord, channelId, plan) {
+export async function repost(discord, channelId, plan) {
   let first;
   for (const [i, chunk] of plan.chunks.entries()) {
     // allowed_mentions: none, so reposting never pings anyone.
@@ -155,7 +155,7 @@ async function repost(discord, channelId, plan) {
  * Starts a new thread on the repost and queues a job to copy the old thread into it.
  * If that fails, the old thread is left alone and is anonymised in place later instead.
  */
-async function rebuildThread(db, discord, job, channelId, repostId, thread) {
+export async function rebuildThread(db, discord, job, channelId, repostId, thread) {
   try {
     const created = await discord.request("POST", `/channels/${channelId}/messages/${repostId}/threads`, {
       json: { name: thread.name, auto_archive_duration: thread.autoArchive },

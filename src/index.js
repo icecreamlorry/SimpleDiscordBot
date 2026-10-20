@@ -3,6 +3,7 @@ import { MEMBER_CSV_HEADER, memberRow, roleNameLookup } from "./csv.js";
 import { createJob, describeFailure, getJob, runJob } from "./jobs.js";
 import { runCron } from "./cron.js";
 import { EDIT_COMMAND, editCommand, submitEdit } from "./edit.js";
+import { ANONYMISE_MESSAGE_COMMAND, anonymiseMessage, anonymiseMessageCommand } from "./anonymise-message.js";
 import { PROTECT_COMMAND, SHIELD, UNPROTECT_COMMAND, setProtected } from "./protect.js";
 import { sayCommand, sendSay } from "./say.js";
 import { describeDay, localNow, parseTime, slotStarted } from "./time.js";
@@ -142,6 +143,12 @@ async function handleInteraction(interaction, env, ctx) {
         return protectCommand(interaction, env, true);
       case UNPROTECT_COMMAND:
         return protectCommand(interaction, env, false);
+      case ANONYMISE_MESSAGE_COMMAND: {
+        const botId = new DiscordClient(env.DISCORD_TOKEN).userId() ?? interaction.application_id;
+        const result = anonymiseMessageCommand(interaction, botId);
+        if (result.problem) return message(result.problem);
+        return message(result.warning, { components: confirmButtons("Anonymise", `anonmsg-confirm:${result.messageId}`) });
+      }
       case EDIT_COMMAND: {
         const botId = new DiscordClient(env.DISCORD_TOKEN).userId() ?? interaction.application_id;
         const result = editCommand(interaction, botId);
@@ -158,6 +165,7 @@ async function handleInteraction(interaction, env, ctx) {
     if (action === "job-cancel" || action === "purge-cancel") return updateMessage("Cancelled.");
     if (action === "purge-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "purge", keepPinned: keepPinned === "1" });
     if (action === "anonymise-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "anonymise" });
+    if (action === "anonmsg-confirm") return confirmAnonymiseMessage(interaction, env, ctx, channelId);
     if (action === "purgeanon-confirm") return confirmJob(interaction, env, ctx, channelId, { mode: "purge-anonymise", keepPinned: keepPinned === "1" });
   }
   if (interaction.type === InteractionType.MODAL_SUBMIT) {
@@ -172,6 +180,27 @@ async function handleInteraction(interaction, env, ctx) {
     }
   }
   return message("Unknown command.");
+}
+
+// --- Anonymise message (right-click a message → Apps) --------------------------------------------
+
+function confirmAnonymiseMessage(interaction, env, ctx, messageId) {
+  ctx.waitUntil(
+    (async () => {
+      const content = await anonymiseMessage(env.DB, backgroundClient(env), {
+        guildId: interaction.guild_id,
+        channelId: interaction.channel_id,
+        messageId,
+      }).catch((e) => {
+        console.error(JSON.stringify({ event: "anonymise_message_failed", channel_id: interaction.channel_id, status: e.status, message: e.message }));
+        return e.status === 403 ? "I'm missing permissions here." : "Sorry, that didn't work.";
+      });
+      await new DiscordClient(env.DISCORD_TOKEN, { budget: 2 })
+        .editOriginal(interaction.application_id, interaction.token, { json: { content, components: [] } })
+        .catch(() => {});
+    })(),
+  );
+  return updateMessage("Anonymising the message...");
 }
 
 // --- Protect / Unprotect from purge (right-click a message → Apps) -------------------------------

@@ -10,6 +10,7 @@ import { runCron } from "../src/cron.js";
 import { localNow } from "../src/time.js";
 import { SHIELD, isProtected, setProtected } from "../src/protect.js";
 import { dividerText } from "../src/dividers.js";
+import { anonymiseMessage } from "../src/anonymise-message.js";
 import { compareIds, snowflakeAt } from "../src/messages.js";
 import { fakeD1, json } from "./helpers.js";
 
@@ -109,6 +110,10 @@ async function fakeDiscord(url, init = {}) {
     if (channel.ghosts) channel.ghosts = [];
     const page = after ? all.filter((x) => compareIds(x.id, after) > 0).slice(0, limit) : all.filter((x) => !before || compareIds(x.id, before) < 0).slice(-limit);
     return json(200, page.reverse()); // Discord returns newest first
+  }
+  if (method === "GET" && rest && /^\d+$/.test(rest)) {
+    const found = channel.messages.find((x) => x.id === rest);
+    return found ? json(200, found) : json(404, { code: 10008, message: "Unknown Message" });
   }
   if (method === "POST" && !rest) {
     if (channel.thread?.archived || channel.thread?.locked) return json(400, { code: 50083, message: "Thread is archived" });
@@ -526,4 +531,31 @@ test("a divider is still added when Discord's own date line would show the wrong
     dividerText(dateOf(Date.now())),
     "written today",
   ]);
+});
+
+test("Anonymise message reposts one message at the bottom and deletes the original", async () => {
+  addMessage(CHANNEL, { author: ALICE, content: "first" });
+  const target = addMessage(CHANNEL, { author: BOB, content: "make me anonymous", reactions: botShield, pinned: true });
+  addMessage(CHANNEL, { author: ALICE, content: "last" });
+
+  const db = fakeD1();
+  const discord = new DiscordClient(BOT_TOKEN);
+  const reply = await anonymiseMessage(db, discord, { guildId: GUILD, channelId: CHANNEL, messageId: target.id });
+  assert.match(reply, /^Anonymised: https:\/\/discord\.com\/channels\//);
+
+  const after = posts(CHANNEL);
+  assert.deepEqual(after.map((m) => m.content), ["first", "last", "make me anonymous"]);
+  assert.ok(after[2].author.bot);
+  assert.equal(isProtected(after[2]), true, "keeps its shield");
+  assert.equal(after[2].pinned, true, "keeps its pin");
+  assert.ok(!channels[CHANNEL].messages.some((m) => m.id === target.id), "original deleted");
+});
+
+test("Anonymise message leaves the bot's own and already-deleted messages alone", async () => {
+  const mine = addMessage(CHANNEL, { author: BOT, content: "already anonymous" });
+  const db = fakeD1();
+  const discord = new DiscordClient(BOT_TOKEN);
+  assert.match(await anonymiseMessage(db, discord, { guildId: GUILD, channelId: CHANNEL, messageId: mine.id }), /already from me/);
+  assert.match(await anonymiseMessage(db, discord, { guildId: GUILD, channelId: CHANNEL, messageId: "123" }), /already been deleted/);
+  assert.deepEqual(contents(CHANNEL), ["already anonymous"]);
 });

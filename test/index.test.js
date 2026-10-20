@@ -85,3 +85,10 @@ test("right-clicking a bot message opens the edit pop-up", async () => {
   assert.equal(res.body.type, 9);
   assert.equal(res.body.data.components[0].components[0].value, "old text");
 });
+
+test("right-click Anonymise message warns that it moves to the bottom", async () => {
+  const target = { id: "60", author: { id: "7" }, content: "hello" };
+  const res = await send({ ...base, type: 2, member: { user: { id: "5" }, permissions: ADMIN }, data: { type: 3, name: "Anonymise message", target_id: "60", resolved: { messages: { 60: target } } } });
+  assert.match(res.body.data.content, /move to the bottom of the channel/);
+  assert.equal(res.body.data.components[0].components[0].custom_id, "anonmsg-confirm:60");
+});

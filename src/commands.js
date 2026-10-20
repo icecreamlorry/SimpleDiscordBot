@@ -1,6 +1,7 @@
 // Slash command definitions, registered with Discord by scripts/register-commands.js.
 import { DAY_NAMES } from "./time.js";
 import { JOB_CHANNEL_TYPES } from "./discord.js";
+import { ANONYMISE_MESSAGE_COMMAND } from "./anonymise-message.js";
 import { EDIT_COMMAND } from "./edit.js";
 import { PROTECT_COMMAND, UNPROTECT_COMMAND } from "./protect.js";
 import { SAY_CHANNEL_TYPES } from "./say.js";
@@ -110,4 +111,5 @@ export const COMMANDS = [
   { type: MESSAGE_COMMAND, name: PROTECT_COMMAND, default_member_permissions: ADMINISTRATOR, ...guildOnly },
   { type: MESSAGE_COMMAND, name: UNPROTECT_COMMAND, default_member_permissions: ADMINISTRATOR, ...guildOnly },
   { type: MESSAGE_COMMAND, name: EDIT_COMMAND, default_member_permissions: ADMINISTRATOR, ...guildOnly },
+  { type: MESSAGE_COMMAND, name: ANONYMISE_MESSAGE_COMMAND, default_member_permissions: ADMINISTRATOR, ...guildOnly },
 ];
