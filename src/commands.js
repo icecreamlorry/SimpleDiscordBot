@@ -123,16 +123,6 @@ export const COMMANDS = [
       { type: Option.NUMBER, name: "holiday_days", description: "Outstanding holiday days", required: true, min_value: 0 },
       { type: Option.NUMBER, name: "notice_weeks", description: "Notice period in weeks", required: true, min_value: 0 },
       { type: Option.STRING, name: "redundancy_date", description: "Date of redundancy, DD/MM/YYYY (defaults to today)" },
-      {
-        type: Option.INTEGER,
-        name: "tax_rate",
-        description: "Income tax rate for the taxable parts (defaults to 20%)",
-        choices: [
-          { name: "20% (basic rate)", value: 20 },
-          { name: "40% (higher rate)", value: 40 },
-          { name: "45% (additional rate)", value: 45 },
-        ],
-      },
     ],
   },
   // Right-click a message → Apps.

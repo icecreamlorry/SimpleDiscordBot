@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calculate, formatBreakdown, fullYears, parseDate, readInputs, statutoryWeeks } from "../src/redundancy.js";
+import { calculate, formatBreakdown, fullYears, parseDate, readInputs, statutoryWeeks, taxOnTop } from "../src/redundancy.js";
 
 const date = (text) => parseDate(text);
 
@@ -35,14 +35,18 @@ test("a full worked example", () => {
   assert.equal(r.noticePay, 10384.62);
   assert.equal(r.holidayPay, 865.38);
   assert.equal(r.pilon, 11250);
-  assert.equal(r.redundancyTax, 0); // 19,772.12 is under £30,000
-  assert.equal(r.tax, 2250);
+  assert.equal(r.redundancyTaxable, 0); // 19,772.12 is under £30,000
+  assert.equal(r.taxable, 11250); // just the PILON
+  // On top of £45,000: £5,270 reaches the £50,270 threshold at 20%, the other £5,980 is at 40%.
+  assert.deepEqual(r.taxBreakdown.slices.map((x) => [x.amount, x.rate, x.tax]), [[5270, 20, 1054], [5980, 40, 2392]]);
+  assert.equal(r.tax, 3446);
   assert.equal(r.gross, 31022.12);
-  assert.equal(r.net, 28772.12);
+  assert.equal(r.net, 27576.12);
 
   const text = formatBreakdown(r);
   assert.match(text, /3 years aged 41 or over × 1\.5 = 4\.5 weeks/);
-  assert.match(text, /Total after tax: £28,772\.12/);
+  assert.match(text, /£5,980\.00 × 40% \(higher rate\) = £2,392\.00/);
+  assert.match(text, /Total after tax: £27,576\.12/);
   assert.ok(text.length < 2000, "fits in one Discord message");
 });
 
@@ -52,12 +56,14 @@ test("enhanced weeks follow the service table", () => {
 });
 
 test("redundancy pay over £30,000 is taxed on the excess", () => {
-  const r = calculate({ start: date("01/01/2000"), end: date("01/06/2026"), age: 60, salary: 104000, holidayDays: 0, noticeWeeks: 0, taxRate: 40 });
+  const r = calculate({ start: date("01/01/2000"), end: date("01/06/2026"), age: 60, salary: 104000, holidayDays: 0, noticeWeeks: 0 });
   // Statutory: 20 years, 19 at 41+ (ages 59..41) and 1 at 40 = 29.5 weeks x 751; enhanced: 13 x 2000.
   assert.equal(r.statutoryPay, 22154.5);
   assert.equal(r.enhancedPay, 26000);
   assert.equal(r.redundancyTaxable, 18154.5);
-  assert.equal(r.redundancyTax, 7261.8);
+  // All at 40%, plus 20% more because it falls where the personal allowance is withdrawn.
+  assert.equal(r.taxBreakdown.taperTax, 3630.9);
+  assert.equal(r.tax, 10892.7);
 });
 
 test("inputs are checked", () => {
@@ -67,4 +73,16 @@ test("inputs are checked", () => {
   assert.match(readInputs({ ...base, startDate: "01/01/2030" }, today).problem, /after the redundancy date/);
   assert.match(readInputs({ ...base, age: 20, startDate: "01/01/2000" }, today).problem, /doesn't fit/);
   assert.deepEqual(readInputs({ ...base, startDate: "01/01/2020" }, today).input.end, today);
+});
+
+test("tax follows the bands the extra pay falls into", () => {
+  const rates = (salary, extra) => taxOnTop(salary, extra).slices.map((x) => [x.amount, x.rate]);
+  assert.deepEqual(rates(30000, 10000), [[10000, 20]]);
+  assert.deepEqual(rates(60000, 10000), [[10000, 40]]);
+  assert.deepEqual(rates(120000, 10000), [[5140, 40], [4860, 45]]);
+  assert.deepEqual(rates(40000, 100000), [[10270, 20], [74870, 40], [14860, 45]]);
+  assert.equal(taxOnTop(30000, 10000).total, 2000);
+  assert.equal(taxOnTop(30000, 10000).taperTax, 0);
+  assert.equal(taxOnTop(120000, 10000).taperTax, 1028); // £5,140 in the withdrawal range
+  assert.equal(taxOnTop(50000, 0).total, 0);
 });

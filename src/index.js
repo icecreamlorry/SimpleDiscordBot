@@ -237,7 +237,6 @@ function redundancyPayCommand(interaction, env) {
       salary: getOption(options, "salary"),
       holidayDays: getOption(options, "holiday_days"),
       noticeWeeks: getOption(options, "notice_weeks"),
-      taxRate: getOption(options, "tax_rate"),
     },
     { y, m, d },
   );
