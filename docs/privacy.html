@@ -48,6 +48,11 @@
       <td>No. Only vote totals are used; the bot never looks up who voted for what.</td>
     </tr>
     <tr>
+      <td>Figures entered into <code>/redundancy-pay</code> (start date, age, salary, holiday days, notice period)</td>
+      <td>When someone runs <code>/redundancy-pay</code>, the bot uses the figures to work out an estimate and replies privately to that person.</td>
+      <td>No. The figures are used for that one calculation and are not stored or logged by the bot. Discord keeps its own record of commands people run.</td>
+    </tr>
+    <tr>
       <td>Server ID, channel ID and schedule settings (time, day, whether to clear or anonymise, whether to keep pinned messages)</td>
       <td>When a server manager sets up a schedule with <code>/schedule add</code>, so the bot knows which channel to clear or anonymise, and when.</td>
       <td>Yes, until the schedule is removed. It is also deleted automatically within an hour of the bot being removed from the server, or once the bot finds the channel has been deleted. This is not information about any individual.</td>

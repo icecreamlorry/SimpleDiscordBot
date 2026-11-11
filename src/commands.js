@@ -6,12 +6,16 @@ import { EDIT_COMMAND } from "./edit.js";
 import { PROTECT_COMMAND, UNPROTECT_COMMAND } from "./protect.js";
 import { SAY_CHANNEL_TYPES } from "./say.js";
 
-const Option = { SUB_COMMAND: 1, STRING: 3, INTEGER: 4, BOOLEAN: 5, CHANNEL: 7, ATTACHMENT: 11 };
+const Option = { SUB_COMMAND: 1, STRING: 3, INTEGER: 4, BOOLEAN: 5, CHANNEL: 7, NUMBER: 10, ATTACHMENT: 11 };
 // Every command is admin-only by default. Server admins can open a command up to other roles
 // under Server Settings → Integrations, but the bot also refuses non-admins unless ADMIN_ONLY
 // is set to "false" in wrangler.jsonc.
 const ADMINISTRATOR = String(1 << 3);
 const MESSAGE_COMMAND = 3;
+
+// Commands anyone in the server can use, even while the bot is admin-only. They must only
+// ever reply privately to the person who ran them and never change anything in the server.
+export const PUBLIC_COMMANDS = new Set(["redundancy-pay"]);
 
 // Guild install only, usable only inside servers.
 const guildOnly = { contexts: [0], integration_types: [0] };
@@ -106,6 +110,30 @@ export const COMMANDS = [
     description: "Download the server's member list as a CSV",
     default_member_permissions: ADMINISTRATOR,
     ...guildOnly,
+  },
+  {
+    name: "redundancy-pay",
+    description: "Estimate a redundancy package, itemised, including tax",
+    // Open to everyone: no default_member_permissions, and listed in PUBLIC_COMMANDS.
+    ...guildOnly,
+    options: [
+      { type: Option.STRING, name: "start_date", description: "Employment start date, DD/MM/YYYY", required: true },
+      { type: Option.INTEGER, name: "age", description: "Age on the day of redundancy", required: true, min_value: 16, max_value: 100 },
+      { type: Option.NUMBER, name: "salary", description: "Yearly salary in £ before tax", required: true, min_value: 0 },
+      { type: Option.NUMBER, name: "holiday_days", description: "Outstanding holiday days", required: true, min_value: 0 },
+      { type: Option.NUMBER, name: "notice_weeks", description: "Notice period in weeks", required: true, min_value: 0 },
+      { type: Option.STRING, name: "redundancy_date", description: "Date of redundancy, DD/MM/YYYY (defaults to today)" },
+      {
+        type: Option.INTEGER,
+        name: "tax_rate",
+        description: "Income tax rate for the taxable parts (defaults to 20%)",
+        choices: [
+          { name: "20% (basic rate)", value: 20 },
+          { name: "40% (higher rate)", value: 40 },
+          { name: "45% (additional rate)", value: 45 },
+        ],
+      },
+    ],
   },
   // Right-click a message → Apps.
   { type: MESSAGE_COMMAND, name: PROTECT_COMMAND, default_member_permissions: ADMINISTRATOR, ...guildOnly },

@@ -1,10 +1,12 @@
 import { ChannelType, DiscordClient, DiscordError, JOB_CHANNEL_TYPES, OutOfBudget, Permission, hasPermission, verifyInteraction } from "./discord.js";
 import { MEMBER_CSV_HEADER, memberRow, roleNameLookup } from "./csv.js";
 import { createJob, describeFailure, getJob, runJob } from "./jobs.js";
+import { PUBLIC_COMMANDS } from "./commands.js";
 import { runCron } from "./cron.js";
 import { EDIT_COMMAND, editCommand, submitEdit } from "./edit.js";
 import { ANONYMISE_MESSAGE_COMMAND, anonymiseMessage, anonymiseMessageCommand } from "./anonymise-message.js";
 import { PROTECT_COMMAND, SHIELD, UNPROTECT_COMMAND, setProtected } from "./protect.js";
+import { calculate, formatBreakdown, readInputs } from "./redundancy.js";
 import { sayCommand, sendSay } from "./say.js";
 import { describeDay, localNow, parseTime, slotStarted } from "./time.js";
 
@@ -125,7 +127,8 @@ async function handleInteraction(interaction, env, ctx) {
   if (!interaction.guild_id) return message("This bot only works inside servers.");
   // Admin-only unless ADMIN_ONLY is "false" in wrangler.jsonc. Checked here as well as in the
   // command defaults because server admins can open commands up to other roles in Discord.
-  if (env.ADMIN_ONLY !== "false" && !hasPermission(interaction.member?.permissions, Permission.ADMINISTRATOR)) {
+  const isPublic = interaction.type === InteractionType.COMMAND && PUBLIC_COMMANDS.has(interaction.data.name);
+  if (!isPublic && env.ADMIN_ONLY !== "false" && !hasPermission(interaction.member?.permissions, Permission.ADMINISTRATOR)) {
     return message("Only server admins can use this bot.");
   }
 
@@ -139,6 +142,8 @@ async function handleInteraction(interaction, env, ctx) {
         return anonymiseCommand(interaction);
       case "say":
         return say(interaction, env);
+      case "redundancy-pay":
+        return redundancyPayCommand(interaction, env);
       case PROTECT_COMMAND:
         return protectCommand(interaction, env, true);
       case UNPROTECT_COMMAND:
@@ -217,6 +222,27 @@ async function protectCommand(interaction, env, on) {
       ? `${SHIELD} Protected. Purges will keep this message, and anonymising will keep it protected.`
       : "Unprotected. This message will be deleted by the next purge.",
   );
+}
+
+// --- /redundancy-pay -----------------------------------------------------------------------------
+
+function redundancyPayCommand(interaction, env) {
+  const options = interaction.data.options;
+  const [y, m, d] = localNow(env.BOT_TIMEZONE).date.split("-").map(Number);
+  const { input, problem } = readInputs(
+    {
+      startDate: getOption(options, "start_date"),
+      redundancyDate: getOption(options, "redundancy_date"),
+      age: getOption(options, "age"),
+      salary: getOption(options, "salary"),
+      holidayDays: getOption(options, "holiday_days"),
+      noticeWeeks: getOption(options, "notice_weeks"),
+      taxRate: getOption(options, "tax_rate"),
+    },
+    { y, m, d },
+  );
+  // Private reply; the figures aren't stored or logged.
+  return message(problem ?? formatBreakdown(calculate(input)));
 }
 
 // --- /say --------------------------------------------------------------------------------------

@@ -92,3 +92,37 @@ test("right-click Anonymise message warns that it moves to the bottom", async ()
   assert.match(res.body.data.content, /move to the bottom of the channel/);
   assert.equal(res.body.data.components[0].components[0].custom_id, "anonmsg-confirm:60");
 });
+
+test("/redundancy-pay replies privately with an itemised breakdown", async () => {
+  const res = await send(
+    command("redundancy-pay", [
+      { name: "start_date", value: "01/03/2015" },
+      { name: "redundancy_date", value: "10/11/2026" },
+      { name: "age", value: 44 },
+      { name: "salary", value: 45000 },
+      { name: "holiday_days", value: 5 },
+      { name: "notice_weeks", value: 12 },
+    ]),
+  );
+  assert.equal(res.body.data.flags, 64, "only the person who ran it sees it");
+  assert.match(res.body.data.content, /Total before tax: £31,022\.12/);
+});
+
+test("/redundancy-pay is open to non-admins, but nothing else is", async () => {
+  const member = bits(10, 11);
+  const options = [
+    { name: "start_date", value: "01/03/2015" },
+    { name: "age", value: 44 },
+    { name: "salary", value: 45000 },
+    { name: "holiday_days", value: 5 },
+    { name: "notice_weeks", value: 12 },
+  ];
+  const res = await send(command("redundancy-pay", options, member));
+  assert.match(res.body.data.content, /Redundancy pay estimate/);
+  for (const name of ["purge", "anonymise", "say", "export-members", "schedule"]) {
+    assert.match((await send(command(name, [], member))).body.data.content, /Only server admins/, name);
+  }
+  // A button or pop-up can't be used to get round the check by borrowing the public name.
+  const button = await send({ ...base, type: 3, member: { user: { id: "5" }, permissions: member }, data: { name: "redundancy-pay", custom_id: "purge-confirm:222:0" } });
+  assert.match(button.body.data.content, /Only server admins/);
+});
